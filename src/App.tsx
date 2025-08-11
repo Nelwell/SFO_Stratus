@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye, Moon } from 'lucide-react';
 
+// SFO coordinates for sunrise calculation
+const SFO_LAT = 37.6213;
+const SFO_LON = -122.3790;
+
 interface PressureData {
   sfo: number;
   smf: number;
@@ -51,6 +55,41 @@ function App() {
   const [month, setMonth] = useState<string>('July');
   const [afternoonDewpoint, setAfternoonDewpoint] = useState<number>(55);
   const [darkMode, setDarkMode] = useState<boolean>(false);
+
+  // Calculate sunrise time for SFO
+  const getSunriseTime = () => {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth() + 1;
+    const day = now.getUTCDate();
+    
+    // Julian day calculation
+    const a = Math.floor((14 - month) / 12);
+    const y = year - a;
+    const m = month + 12 * a - 3;
+    const jd = day + Math.floor((153 * m + 2) / 5) + 365 * y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) + 1721119;
+    
+    // Solar calculations
+    const n = jd - 2451545.0;
+    const L = (280.460 + 0.9856474 * n) % 360;
+    const g = ((357.528 + 0.9856003 * n) % 360) * Math.PI / 180;
+    const lambda = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * Math.PI / 180;
+    
+    const alpha = Math.atan2(Math.cos(23.439 * Math.PI / 180) * Math.sin(lambda), Math.cos(lambda));
+    const delta = Math.asin(Math.sin(23.439 * Math.PI / 180) * Math.sin(lambda));
+    
+    const latRad = SFO_LAT * Math.PI / 180;
+    const hourAngle = Math.acos(-Math.tan(latRad) * Math.tan(delta));
+    
+    // Time calculations
+    const eqTime = 4 * (L * Math.PI / 180 - 0.0057183 - alpha + SFO_LON * Math.PI / 180);
+    const sunriseMinutes = 720 - 4 * SFO_LON - eqTime - 4 * hourAngle * 180 / Math.PI;
+    
+    const sunriseHours = Math.floor(sunriseMinutes / 60) % 24;
+    const sunriseMin = Math.floor(sunriseMinutes % 60);
+    
+    return `${sunriseHours.toString().padStart(2, '0')}${sunriseMin.toString().padStart(2, '0')}Z`;
+  };
 
   useEffect(() => {
     if (darkMode) {
@@ -668,6 +707,12 @@ function App() {
                     <span className="font-medium text-orange-800 dark:text-orange-300">SCT Time</span>
                     <span className="text-lg font-bold text-orange-600 dark:text-orange-400">
                       +{calculateBurnOffTime(burnOff.base, burnOff.top)}hrs sunrise
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center mt-2 pt-2 border-t border-orange-200 dark:border-orange-700">
+                    <span className="text-sm text-orange-700 dark:text-orange-400">SFO Sunrise</span>
+                    <span className="text-sm font-semibold text-orange-600 dark:text-orange-400">
+                      {getSunriseTime()}
                     </span>
                   </div>
                 </div>
