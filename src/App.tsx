@@ -347,47 +347,13 @@ function App() {
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <h3 className="font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                    Onshore (SFO - SMF)
-                    <span className="text-lg font-bold text-green-600">{calculateON().toFixed(1)}mb</span>
-                  </h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SFO (mb)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={onPressure.sfo}
-                        onChange={(e) => setOnPressure({...onPressure, sfo: parseFloat(e.target.value)})}
-                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SMF (mb)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={onPressure.smf}
-                        onChange={(e) => setOnPressure({...onPressure, smf: parseFloat(e.target.value)})}
-                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">24hr Trend (mb)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={onPressure.trend24h}
-                      onChange={(e) => setOnPressure({...onPressure, trend24h: parseFloat(e.target.value)})}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h3 className="font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                     Offshore (ACV - SFO)
-                    <span className="text-lg font-bold text-orange-600">{calculateOFF().toFixed(1)}mb</span>
+                    <span className={`text-lg font-bold ${
+                      calculateOFF() <= -6.0 ? 'text-red-600' :
+                      calculateOFF() <= -5.0 ? 'text-orange-600' :
+                      calculateOFF() <= -3.0 ? 'text-yellow-600' :
+                      'text-green-600'
+                    }`}>{calculateOFF().toFixed(1)}mb</span>
                   </h3>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -418,6 +384,50 @@ function App() {
                       step="0.1"
                       value={offPressure.trend24h}
                       onChange={(e) => setOffPressure({...offPressure, trend24h: parseFloat(e.target.value)})}
+                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                    Onshore (SFO - SMF)
+                    <span className={`text-lg font-bold ${
+                      calculateON() >= 4.0 ? 'text-red-600' :
+                      calculateON() >= 3.6 ? 'text-orange-600' :
+                      calculateON() >= 3.0 ? 'text-yellow-600' :
+                      'text-green-600'
+                    }`}>{calculateON().toFixed(1)}mb</span>
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SFO (mb)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={onPressure.sfo}
+                        onChange={(e) => setOnPressure({...onPressure, sfo: parseFloat(e.target.value)})}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SMF (mb)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={onPressure.smf}
+                        onChange={(e) => setOnPressure({...onPressure, smf: parseFloat(e.target.value)})}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">24hr Trend (mb)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={onPressure.trend24h}
+                      onChange={(e) => setOnPressure({...onPressure, trend24h: parseFloat(e.target.value)})}
                       className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                     />
                   </div>
