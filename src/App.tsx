@@ -284,8 +284,8 @@ function App() {
               </div>
               <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg transition-colors duration-300">
                 <div className="flex justify-between text-sm">
-                  <span className="text-red-600 font-medium">SI > 22: Low Probability (21%)</span>
-                  <span className="text-green-600 font-medium">SI < 10: High Probability (91%)</span>
+                  <span className="text-red-600 font-medium">SI &gt; 22: Low Probability (21%)</span>
+                  <span className="text-green-600 font-medium">SI &lt; 10: High Probability (91%)</span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2 mt-2">
                   <div 
