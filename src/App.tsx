@@ -349,9 +349,9 @@ function App() {
                   <h3 className="font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                     Offshore (ACV - SFO)
                     <span className={`text-lg font-bold ${
-                      calculateOFF() <= -6.0 ? 'text-red-600' :
-                      calculateOFF() <= -5.0 ? 'text-orange-600' :
-                      calculateOFF() <= -3.0 ? 'text-yellow-600' :
+                      calculateOFF() >= -3.0 ? 'text-red-600' :
+                      calculateOFF() >= -4.0 ? 'text-orange-600' :
+                      calculateOFF() >= -5.0 ? 'text-yellow-600' :
                       'text-green-600'
                     }`}>{calculateOFF().toFixed(1)}mb</span>
                   </h3>
