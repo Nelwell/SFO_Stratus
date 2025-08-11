@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye } from 'lucide-react';
+import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye, Moon } from 'lucide-react';
 
 interface PressureData {
   sfo: number;
@@ -51,6 +51,15 @@ function App() {
   });
   const [month, setMonth] = useState<string>('July');
   const [afternoonDewpoint, setAfternoonDewpoint] = useState<number>(55);
+  const [darkMode, setDarkMode] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
 
   const calculateSI = () => maxTemp - maxDewpoint;
   const calculateON = () => onPressure.sfo - onPressure.smf;
@@ -214,15 +223,26 @@ function App() {
   const si = calculateSI();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 dark:from-gray-900 dark:via-gray-800 dark:to-slate-900 transition-colors duration-300">
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <Cloud className="h-8 w-8 text-blue-600" />
-            <h1 className="text-3xl font-bold text-gray-800">SFO Marine Layer Forecaster</h1>
+            <Cloud className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+            <h1 className="text-3xl font-bold text-gray-800 dark:text-white">SFO Marine Layer Forecaster</h1>
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className="ml-4 p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200"
+              aria-label="Toggle dark mode"
+            >
+              {darkMode ? (
+                <Sun className="h-5 w-5 text-yellow-500" />
+              ) : (
+                <Moon className="h-5 w-5 text-gray-600" />
+              )}
+            </button>
           </div>
-          <p className="text-gray-600 max-w-2xl mx-auto">
+          <p className="text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
             Advanced stratus onset and burn-off prediction tool based on the Cohen-Lau methodology
           </p>
         </div>
@@ -232,42 +252,42 @@ function App() {
           <div className="lg:col-span-2 space-y-6">
             
             {/* Stratus Index */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
               <div className="flex items-center gap-2 mb-4">
                 <Thermometer className="h-5 w-5 text-red-500" />
-                <h2 className="text-lg font-semibold text-gray-800">Stratus Index (SI)</h2>
-                <span className="text-2xl font-bold text-blue-600 ml-auto">{si.toFixed(1)}</span>
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Stratus Index (SI)</h2>
+                <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 ml-auto">{si.toFixed(1)}</span>
               </div>
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Max Temperature (20-24Z) °F
                   </label>
                   <input
                     type="number"
                     value={maxTemp}
                     onChange={(e) => setMaxTemp(parseFloat(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Max Dewpoint (20-24Z) °F
                   </label>
                   <input
                     type="number"
                     value={maxDewpoint}
                     onChange={(e) => setMaxDewpoint(parseFloat(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
               </div>
-              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+              <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg transition-colors duration-300">
                 <div className="flex justify-between text-sm">
                   <span className="text-green-600 font-medium">SI &lt; 10: High Probability (91%)</span>
                   <span className="text-red-600 font-medium">SI &gt; 22: Low Probability (21%)</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2 mt-2">
                   <div 
                     className={`h-2 rounded-full transition-all duration-300 ${
                       si < 10 ? 'bg-green-500' : si > 22 ? 'bg-red-500' : 'bg-yellow-500'
@@ -279,94 +299,94 @@ function App() {
             </div>
 
             {/* Pressure Gradients */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
               <div className="flex items-center gap-2 mb-4">
                 <Gauge className="h-5 w-5 text-blue-500" />
-                <h2 className="text-lg font-semibold text-gray-800">Pressure Gradients</h2>
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Pressure Gradients</h2>
               </div>
               
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  <h3 className="font-medium text-gray-700 flex items-center gap-2">
+                  <h3 className="font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                     Onshore (SFO - SMF)
                     <span className="text-lg font-bold text-green-600">{calculateON().toFixed(1)}mb</span>
                   </h3>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">SFO (mb)</label>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SFO (mb)</label>
                       <input
                         type="number"
                         step="0.1"
                         value={onPressure.sfo}
                         onChange={(e) => setOnPressure({...onPressure, sfo: parseFloat(e.target.value)})}
-                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">SMF (mb)</label>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SMF (mb)</label>
                       <input
                         type="number"
                         step="0.1"
                         value={onPressure.smf}
                         onChange={(e) => setOnPressure({...onPressure, smf: parseFloat(e.target.value)})}
-                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">24hr Trend (mb)</label>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">24hr Trend (mb)</label>
                     <input
                       type="number"
                       step="0.1"
                       value={onPressure.trend24h}
                       onChange={(e) => setOnPressure({...onPressure, trend24h: parseFloat(e.target.value)})}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                  <h3 className="font-medium text-gray-700 flex items-center gap-2">
+                  <h3 className="font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                     Offshore (ACV - SFO)
                     <span className="text-lg font-bold text-orange-600">{calculateOFF().toFixed(1)}mb</span>
                   </h3>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">ACV (mb)</label>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">ACV (mb)</label>
                       <input
                         type="number"
                         step="0.1"
                         value={offPressure.acv}
                         onChange={(e) => setOffPressure({...offPressure, acv: parseFloat(e.target.value)})}
-                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">SFO (mb)</label>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SFO (mb)</label>
                       <input
                         type="number"
                         step="0.1"
                         value={offPressure.sfo}
                         onChange={(e) => setOffPressure({...offPressure, sfo: parseFloat(e.target.value)})}
-                        className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">24hr Trend (mb)</label>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">24hr Trend (mb)</label>
                     <input
                       type="number"
                       step="0.1"
                       value={offPressure.trend24h}
                       onChange={(e) => setOffPressure({...offPressure, trend24h: parseFloat(e.target.value)})}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-800">
+              <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg transition-colors duration-300">
+                <p className="text-sm text-blue-800 dark:text-blue-300">
                   <strong>ON ≥ 3.6mb:</strong> Increases stratus likelihood | 
                   <strong> OFF ≥ 3.4mb:</strong> Decreases stratus likelihood
                 </p>
@@ -374,29 +394,29 @@ function App() {
             </div>
 
             {/* Environmental Factors */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
               <div className="flex items-center gap-2 mb-4">
                 <Eye className="h-5 w-5 text-purple-500" />
-                <h2 className="text-lg font-semibold text-gray-800">Environmental Factors</h2>
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Environmental Factors</h2>
               </div>
               
               <div className="grid md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Base Inversion (ft)
                   </label>
                   <input
                     type="number"
                     value={baseInversion}
                     onChange={(e) => setBaseInversion(parseInt(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
-                  <p className="text-xs text-gray-600 mt-1">
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                     {baseInversion < 500 ? '⚠️ No formation' : baseInversion < 1000 ? '⚠️ Delayed' : '✅ Normal'}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     2K Winds
                   </label>
                   <input
@@ -404,17 +424,17 @@ function App() {
                     value={wind2k}
                     onChange={(e) => setWind2k(e.target.value)}
                     placeholder="W15, E08, etc."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Month
                   </label>
                   <select
                     value={month}
                     onChange={(e) => setMonth(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   >
                     <option value="May">May</option>
                     <option value="June">June</option>
@@ -426,14 +446,14 @@ function App() {
               </div>
 
               <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Afternoon Dewpoint °F
                 </label>
                 <input
                   type="number"
                   value={afternoonDewpoint}
                   onChange={(e) => setAfternoonDewpoint(parseFloat(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                 />
                 {afternoonDewpoint < 42 && (
                   <p className="text-red-600 text-sm mt-1">⚠️ Below 42°F makes stratus improbable</p>
@@ -442,10 +462,10 @@ function App() {
             </div>
 
             {/* Synoptic Triggers */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
               <div className="flex items-center gap-2 mb-4">
                 <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                <h2 className="text-lg font-semibold text-gray-800">Synoptic Triggers</h2>
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Synoptic Triggers</h2>
                 {hasTrigger() && <span className="text-sm bg-yellow-100 text-yellow-800 px-2 py-1 rounded">Early Onset Likely ≤03Z</span>}
               </div>
               
@@ -457,7 +477,7 @@ function App() {
                     onChange={(e) => setTriggers({...triggers, deepeningTrough: e.target.checked})}
                     className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                   />
-                  <span className="text-sm text-gray-700">Deepening Mid-Level Trough</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Deepening Mid-Level Trough</span>
                 </label>
                 
                 <label className="flex items-center gap-3 cursor-pointer">
@@ -467,7 +487,7 @@ function App() {
                     onChange={(e) => setTriggers({...triggers, shortwaveTrough: e.target.checked})}
                     className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                   />
-                  <span className="text-sm text-gray-700">Shortwave/Vorticity Maximum</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Shortwave/Vorticity Maximum</span>
                 </label>
                 
                 <label className="flex items-center gap-3 cursor-pointer">
@@ -477,7 +497,7 @@ function App() {
                     onChange={(e) => setTriggers({...triggers, longWaveTrough: e.target.checked})}
                     className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                   />
-                  <span className="text-sm text-gray-700">Long-Wave Trough (East of Bay)</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Long-Wave Trough (East of Bay)</span>
                 </label>
                 
                 <label className="flex items-center gap-3 cursor-pointer">
@@ -487,49 +507,49 @@ function App() {
                     onChange={(e) => setTriggers({...triggers, shallowFront: e.target.checked})}
                     className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                   />
-                  <span className="text-sm text-gray-700">Shallow Pre-Frontal Boundary</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Shallow Pre-Frontal Boundary</span>
                 </label>
               </div>
               
-              <div className="mt-4 p-3 bg-yellow-50 rounded-lg">
-                <p className="text-sm text-yellow-800">
+              <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg transition-colors duration-300">
+                <p className="text-sm text-yellow-800 dark:text-yellow-300">
                   93% of early stratus onset cases (≤03Z) have at least one trigger present
                 </p>
               </div>
             </div>
 
             {/* Burn-Off Analysis */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
               <div className="flex items-center gap-2 mb-4">
                 <Sun className="h-5 w-5 text-orange-500" />
-                <h2 className="text-lg font-semibold text-gray-800">Cohen Burn-Off Analysis</h2>
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Cohen Burn-Off Analysis</h2>
               </div>
               
               <div className="grid md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     14Z Base Height (ft)
                   </label>
                   <input
                     type="number"
                     value={burnOff.base}
                     onChange={(e) => setBurnOff({...burnOff, base: parseInt(e.target.value)})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Thickness (ft)
                   </label>
                   <input
                     type="number"
                     value={burnOff.thickness}
                     onChange={(e) => setBurnOff({...burnOff, thickness: parseInt(e.target.value)})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Observation Time
                   </label>
                   <input
@@ -537,13 +557,13 @@ function App() {
                     value={burnOff.time}
                     onChange={(e) => setBurnOff({...burnOff, time: e.target.value})}
                     placeholder="14Z"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
               </div>
               
-              <div className="mt-4 p-3 bg-orange-50 rounded-lg">
-                <p className="text-sm text-orange-800">
+              <div className="mt-4 p-3 bg-orange-50 dark:bg-orange-900/30 rounded-lg transition-colors duration-300">
+                <p className="text-sm text-orange-800 dark:text-orange-300">
                   <strong>Estimated SCT Time:</strong> {calculateBurnOffTime(burnOff.base, burnOff.thickness)} hours after sunrise
                   <br />
                   <strong>Burn Rate:</strong> ~200 ft/hr | <strong>Total Depth:</strong> {burnOff.base + burnOff.thickness}ft
@@ -554,10 +574,10 @@ function App() {
 
           {/* Results Panel */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 sticky top-6">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 sticky top-6 transition-colors duration-300">
               <div className="flex items-center gap-2 mb-6">
-                <Clock className="h-6 w-6 text-blue-600" />
-                <h2 className="text-xl font-bold text-gray-800">Forecast Summary</h2>
+                <Clock className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                <h2 className="text-xl font-bold text-gray-800 dark:text-white">Forecast Summary</h2>
               </div>
 
               {/* Probability Gauge */}
@@ -576,32 +596,32 @@ function App() {
                         } ${prediction.probability * 3.6}deg, #e5e7eb 0deg)`
                       }}
                     ></div>
-                    <div className="absolute inset-4 bg-white rounded-full flex items-center justify-center">
-                      <span className="text-2xl font-bold text-gray-800">{prediction.probability}%</span>
+                    <div className="absolute inset-4 bg-white dark:bg-gray-800 rounded-full flex items-center justify-center transition-colors duration-300">
+                      <span className="text-2xl font-bold text-gray-800 dark:text-white">{prediction.probability}%</span>
                     </div>
                   </div>
                 </div>
-                <p className="text-lg font-semibold mt-2 text-gray-700">Stratus Probability</p>
-                <p className="text-sm text-gray-600">Confidence: {prediction.confidence}</p>
+                <p className="text-lg font-semibold mt-2 text-gray-700 dark:text-gray-300">Stratus Probability</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Confidence: {prediction.confidence}</p>
               </div>
 
               {/* Timing Results */}
               <div className="space-y-4 mb-6">
-                <div className="bg-blue-50 rounded-lg p-4">
+                <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4 transition-colors duration-300">
                   <div className="flex justify-between items-center mb-2">
-                    <span className="font-medium text-blue-800">Onset Time</span>
-                    <span className="text-xl font-bold text-blue-600">{prediction.startTime}</span>
+                    <span className="font-medium text-blue-800 dark:text-blue-300">Onset Time</span>
+                    <span className="text-xl font-bold text-blue-600 dark:text-blue-400">{prediction.startTime}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="font-medium text-blue-800">End Time</span>
-                    <span className="text-xl font-bold text-blue-600">{prediction.endTime}</span>
+                    <span className="font-medium text-blue-800 dark:text-blue-300">End Time</span>
+                    <span className="text-xl font-bold text-blue-600 dark:text-blue-400">{prediction.endTime}</span>
                   </div>
                 </div>
 
-                <div className="bg-orange-50 rounded-lg p-4">
+                <div className="bg-orange-50 dark:bg-orange-900/30 rounded-lg p-4 transition-colors duration-300">
                   <div className="flex justify-between items-center">
-                    <span className="font-medium text-orange-800">SCT Time</span>
-                    <span className="text-lg font-bold text-orange-600">
+                    <span className="font-medium text-orange-800 dark:text-orange-300">SCT Time</span>
+                    <span className="text-lg font-bold text-orange-600 dark:text-orange-400">
                       +{calculateBurnOffTime(burnOff.base, burnOff.thickness)}hrs sunrise
                     </span>
                   </div>
@@ -609,25 +629,25 @@ function App() {
               </div>
 
               {/* Reasoning */}
-              <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                <h3 className="font-semibold text-gray-700 mb-2">Analysis</h3>
-                <p className="text-sm text-gray-600 mb-2">{prediction.reasoning}</p>
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4 transition-colors duration-300">
+                <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Analysis</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{prediction.reasoning}</p>
                 {hasTrigger() && (
-                  <p className="text-sm text-yellow-700 font-medium">⚡ Synoptic trigger detected - early onset likely</p>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-400 font-medium">⚡ Synoptic trigger detected - early onset likely</p>
                 )}
               </div>
 
               {/* Warnings */}
               {prediction.warnings.length > 0 && (
-                <div className="bg-red-50 rounded-lg p-4">
-                  <h3 className="font-semibold text-red-700 mb-2 flex items-center gap-2">
+                <div className="bg-red-50 dark:bg-red-900/30 rounded-lg p-4 transition-colors duration-300">
+                  <h3 className="font-semibold text-red-700 dark:text-red-400 mb-2 flex items-center gap-2">
                     <AlertTriangle className="h-4 w-4" />
                     Warnings
                   </h3>
-                  <ul className="text-sm text-red-600 space-y-1">
+                  <ul className="text-sm text-red-600 dark:text-red-400 space-y-1">
                     {prediction.warnings.map((warning, idx) => (
                       <li key={idx} className="flex items-start gap-2">
-                        <span className="text-red-500 mt-0.5">•</span>
+                        <span className="text-red-500 dark:text-red-400 mt-0.5">•</span>
                         {warning}
                       </li>
                     ))}
@@ -639,7 +659,7 @@ function App() {
         </div>
 
         {/* Footer */}
-        <div className="mt-8 text-center text-sm text-gray-500">
+        <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
           <p>Based on Cohen-Lau SFO Marine Layer Study (1991-1994) • 613 case dataset</p>
         </div>
       </div>
