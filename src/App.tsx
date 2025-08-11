@@ -148,26 +148,52 @@ function App() {
       };
     }
 
-    if (afternoonDewpoint < 42) {
-      return {
-        startTime: 'Improbable',
-        endTime: 'N/A', 
-        probability: 10,
-        confidence: 'High',
-        warnings: ['Afternoon dewpoint below 42°F makes stratus improbable'],
-        reasoning: 'Insufficient moisture for marine layer saturation'
-      };
+    // Smooth dewpoint reduction (starts reducing at 45°F, severe reduction below 42°F)
+    if (afternoonDewpoint < 45) {
+      let dewpointFactor = 1.0;
+      if (afternoonDewpoint >= 42) {
+        // Gradual reduction from 45°F to 42°F
+        dewpointFactor = 0.3 + (0.7 * (afternoonDewpoint - 42) / 3);
+      } else {
+        // Severe reduction below 42°F
+        dewpointFactor = Math.max(0.05, 0.3 * Math.pow((afternoonDewpoint - 35) / 7, 2));
+      }
+      probability *= dewpointFactor;
+      
+      if (afternoonDewpoint < 42) {
+        warnings.push(`Minimum afternoon dewpoint (${afternoonDewpoint}°F) well below 42°F threshold - stratus very improbable`);
+        confidence = 'High';
+      } else {
+        warnings.push(`Minimum afternoon dewpoint (${afternoonDewpoint}°F) approaching 42°F threshold - reduced probability`);
+      }
     }
 
-    // Monthly threshold checks
-    if (on < monthlyThresh.onMin) {
-      probability *= 0.3;
-      warnings.push(`Onshore gradient (${on.toFixed(1)}mb) below ${monthlyThresh.onMin}mb ${month} threshold`);
+    // Smooth monthly threshold checks for onshore gradient
+    if (on < monthlyThresh.onMin + 0.5) {
+      let onFactor = 1.0;
+      if (on >= monthlyThresh.onMin) {
+        // Gradual reduction in the 0.5mb buffer zone
+        onFactor = 0.3 + (0.7 * (on - monthlyThresh.onMin) / 0.5);
+      } else {
+        // More severe reduction below threshold
+        onFactor = Math.max(0.1, 0.3 * Math.pow(Math.max(0, on) / monthlyThresh.onMin, 1.5));
+      }
+      probability *= onFactor;
+      warnings.push(`Onshore gradient (${on.toFixed(1)}mb) ${on < monthlyThresh.onMin ? 'below' : 'near'} ${monthlyThresh.onMin}mb ${month} threshold`);
     }
 
-    if (off < monthlyThresh.offMax) {
-      probability *= 0.2;
-      warnings.push(`Offshore gradient (${off.toFixed(1)}mb) below ${monthlyThresh.offMax}mb ${month} threshold`);
+    // Smooth monthly threshold checks for offshore gradient (note: offMax is negative)
+    if (off > monthlyThresh.offMax - 0.5) {
+      let offFactor = 1.0;
+      if (off <= monthlyThresh.offMax) {
+        // Gradual reduction in the 0.5mb buffer zone above threshold
+        offFactor = 0.2 + (0.8 * (monthlyThresh.offMax - off) / 0.5);
+      } else {
+        // More severe reduction above threshold (less negative = worse)
+        offFactor = Math.max(0.05, 0.2 * Math.pow(Math.abs(monthlyThresh.offMax) / Math.max(0.1, Math.abs(off)), 1.5));
+      }
+      probability *= offFactor;
+      warnings.push(`Offshore gradient (${off.toFixed(1)}mb) ${off > monthlyThresh.offMax ? 'above' : 'near'} ${monthlyThresh.offMax}mb ${month} threshold`);
     }
 
     // Pressure gradient adjustments
@@ -185,10 +211,24 @@ function App() {
       }
     }
 
-    // Base inversion effects
-    if (baseInversion < 1000) {
-      startTime += 2;
-      warnings.push('Low inversion height delays penetration through gaps');
+    // Smooth base inversion effects
+    if (baseInversion < 1200) {
+      let inversionFactor = 1.0;
+      let delayHours = 0;
+      
+      if (baseInversion >= 1000) {
+        // Gradual effects from 1200ft to 1000ft
+        inversionFactor = 0.8 + (0.2 * (baseInversion - 1000) / 200);
+        delayHours = Math.round(2 * (1200 - baseInversion) / 200);
+      } else {
+        // More significant effects below 1000ft
+        inversionFactor = Math.max(0.4, 0.8 * Math.pow(baseInversion / 1000, 0.5));
+        delayHours = 2 + Math.round(2 * (1000 - baseInversion) / 500);
+      }
+      
+      probability *= inversionFactor;
+      startTime += delayHours;
+      warnings.push(`Low inversion height (${baseInversion}ft) ${baseInversion < 1000 ? 'significantly delays' : 'delays'} penetration through gaps`);
     }
 
     // Synoptic trigger effects
