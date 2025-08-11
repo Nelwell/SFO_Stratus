@@ -105,23 +105,23 @@ function App() {
 
   const getSITiming = (si: number) => {
     const timingTable = [
-      { si: 9, start: '01Z', end: '21Z', noCigProb: 5.9 },
-      { si: 10, start: '01Z', end: '21Z', noCigProb: 11.1 },
-      { si: 11, start: '03Z', end: '20Z', noCigProb: 10.7 },
-      { si: 12, start: '03Z', end: '19Z', noCigProb: 11.4 },
-      { si: 13, start: '06Z', end: '18Z', noCigProb: 20.6 },
-      { si: 14, start: '07Z', end: '17Z', noCigProb: 21.5 },
-      { si: 15, start: '08Z', end: '17Z', noCigProb: 24.4 },
-      { si: 16, start: '09Z', end: '17Z', noCigProb: 20.8 },
-      { si: 17, start: '09Z', end: '17Z', noCigProb: 20.0 },
-      { si: 18, start: '09Z', end: '17Z', noCigProb: 21.6 },
-      { si: 19, start: '10Z', end: '17Z', noCigProb: 23.3 },
-      { si: 20, start: '10Z', end: '17Z', noCigProb: 44.4 },
-      { si: 21, start: '10Z', end: '17Z', noCigProb: 60.0 },
-      { si: 22, start: '10Z', end: '17Z', noCigProb: 75.0 },
-      { si: 23, start: '11Z', end: '17Z', noCigProb: 80.0 },
-      { si: 24, start: '13Z', end: '17Z', noCigProb: 70.0 },
-      { si: 25, start: '13Z', end: '17Z', noCigProb: 83.3 }
+      { si: 9, start: 1, end: 21, noCigProb: 5.9 },
+      { si: 10, start: 1, end: 21, noCigProb: 11.1 },
+      { si: 11, start: 3, end: 20, noCigProb: 10.7 },
+      { si: 12, start: 3, end: 19, noCigProb: 11.4 },
+      { si: 13, start: 6, end: 18, noCigProb: 20.6 },
+      { si: 14, start: 7, end: 17, noCigProb: 21.5 },
+      { si: 15, start: 8, end: 17, noCigProb: 24.4 },
+      { si: 16, start: 9, end: 17, noCigProb: 20.8 },
+      { si: 17, start: 9, end: 17, noCigProb: 20.0 },
+      { si: 18, start: 9, end: 17, noCigProb: 21.6 },
+      { si: 19, start: 10, end: 17, noCigProb: 23.3 },
+      { si: 20, start: 10, end: 17, noCigProb: 44.4 },
+      { si: 21, start: 10, end: 17, noCigProb: 60.0 },
+      { si: 22, start: 10, end: 17, noCigProb: 75.0 },
+      { si: 23, start: 11, end: 17, noCigProb: 80.0 },
+      { si: 24, start: 13, end: 17, noCigProb: 70.0 },
+      { si: 25, start: 13, end: 17, noCigProb: 83.3 }
     ];
 
     if (si < 9) return timingTable[0];
@@ -137,6 +137,16 @@ function App() {
     if (!upper) return timingTable[timingTable.length - 1];
     
     return lower;
+  };
+
+  const roundToNearestHalfHour = (time: number) => {
+    return Math.round(time * 2) / 2;
+  };
+
+  const formatTime = (time: number) => {
+    const hours = Math.floor(time);
+    const minutes = (time - hours) * 60;
+    return `${hours.toString().padStart(2, '0')}${minutes.toString().padStart(2, '0')}Z`;
   };
 
   const getMonthlyThresholds = () => {
@@ -169,7 +179,7 @@ function App() {
     const siTiming = getSITiming(si);
     const monthlyThresh = getMonthlyThresholds();
     
-    let startTime = parseInt(siTiming.start.replace('Z', ''));
+    let startTime = siTiming.start;
     let probability = 100 - siTiming.noCigProb;
     let confidence = 'Medium';
     let warnings = [];
@@ -238,14 +248,14 @@ function App() {
     if (on >= 3.6) {
       probability *= 1.2;
       if (onPressure.trend24h > 0) {
-        startTime = Math.max(1, startTime - Math.round(onPressure.trend24h));
+        startTime = Math.max(1, startTime - onPressure.trend24h);
       }
     }
 
     if (off >= 3.4) {
       probability *= 0.7;
       if (offPressure.trend24h > 0) {
-        startTime += Math.round(offPressure.trend24h);
+        startTime += offPressure.trend24h;
       }
     }
 
@@ -257,11 +267,11 @@ function App() {
       if (baseInversion >= 1000) {
         // Gradual effects from 1200ft to 1000ft
         inversionFactor = 0.8 + (0.2 * (baseInversion - 1000) / 200);
-        delayHours = Math.round(2 * (1200 - baseInversion) / 200);
+        delayHours = 2 * (1200 - baseInversion) / 200;
       } else {
         // More significant effects below 1000ft
         inversionFactor = Math.max(0.4, 0.8 * Math.pow(baseInversion / 1000, 0.5));
-        delayHours = 2 + Math.round(2 * (1000 - baseInversion) / 500);
+        delayHours = 2 + 2 * (1000 - baseInversion) / 500;
       }
       
       probability *= inversionFactor;
@@ -287,9 +297,13 @@ function App() {
     
     probability = Math.min(95, Math.max(5, probability));
     
+    // Round times to nearest half hour
+    const roundedStartTime = roundToNearestHalfHour(startTime);
+    const roundedEndTime = roundToNearestHalfHour(siTiming.end);
+    
     return {
-      startTime: startTime > 24 ? 'No Event' : `${startTime.toString().padStart(2, '0')}Z`,
-      endTime: siTiming.end,
+      startTime: roundedStartTime > 24 ? 'No Event' : formatTime(roundedStartTime),
+      endTime: formatTime(roundedEndTime),
       probability: Math.round(probability),
       confidence,
       warnings,
