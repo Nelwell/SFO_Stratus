@@ -43,6 +43,7 @@ function App() {
     longWaveTrough: false,
     shallowFront: false
   });
+  const [selectedTrigger, setSelectedTrigger] = useState<string>('');
   const [burnOff, setBurnOff] = useState<BurnOffData>({
     base: 800,
     top: 1700
@@ -119,8 +120,7 @@ function App() {
   };
 
   const hasTrigger = () => {
-    return triggers.deepeningTrough || triggers.shortwaveTrough || 
-           triggers.longWaveTrough || triggers.shallowFront;
+    return selectedTrigger !== '';
   };
 
   const getFinalPrediction = () => {
@@ -232,7 +232,7 @@ function App() {
 
     // Synoptic trigger effects
     if (hasTrigger()) {
-      startTime = Math.min(startTime, 3);
+      startTime = Math.max(1, Math.min(startTime, 3));
       probability *= 1.3;
       confidence = 'High';
     }
@@ -515,46 +515,54 @@ function App() {
               <div className="flex items-center gap-2 mb-4">
                 <AlertTriangle className="h-5 w-5 text-yellow-500" />
                 <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Synoptic Triggers</h2>
-                {hasTrigger() && <span className="text-sm bg-yellow-100 text-yellow-800 px-2 py-1 rounded">Early Onset Likely ≤03Z</span>}
+                {hasTrigger() && <span className="text-sm bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 px-2 py-1 rounded">Early Onset More Likely ≤03Z</span>}
               </div>
               
               <div className="grid md:grid-cols-2 gap-4">
-                <label className="flex items-center gap-3 cursor-pointer">
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
                   <input
-                    type="checkbox"
-                    checked={triggers.deepeningTrough}
-                    onChange={(e) => setTriggers({...triggers, deepeningTrough: e.target.checked})}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    type="radio"
+                    name="synopticTrigger"
+                    value="deepeningTrough"
+                    checked={selectedTrigger === 'deepeningTrough'}
+                    onChange={(e) => setSelectedTrigger(e.target.checked ? e.target.value : '')}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700 dark:text-gray-300">Deepening Mid-Level Trough</span>
                 </label>
                 
-                <label className="flex items-center gap-3 cursor-pointer">
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
                   <input
-                    type="checkbox"
-                    checked={triggers.shortwaveTrough}
-                    onChange={(e) => setTriggers({...triggers, shortwaveTrough: e.target.checked})}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    type="radio"
+                    name="synopticTrigger"
+                    value="shortwaveTrough"
+                    checked={selectedTrigger === 'shortwaveTrough'}
+                    onChange={(e) => setSelectedTrigger(e.target.checked ? e.target.value : '')}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700 dark:text-gray-300">Shortwave/Vorticity Maximum</span>
                 </label>
                 
-                <label className="flex items-center gap-3 cursor-pointer">
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
                   <input
-                    type="checkbox"
-                    checked={triggers.longWaveTrough}
-                    onChange={(e) => setTriggers({...triggers, longWaveTrough: e.target.checked})}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    type="radio"
+                    name="synopticTrigger"
+                    value="longWaveTrough"
+                    checked={selectedTrigger === 'longWaveTrough'}
+                    onChange={(e) => setSelectedTrigger(e.target.checked ? e.target.value : '')}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700 dark:text-gray-300">Long-Wave Trough (East of Bay)</span>
                 </label>
                 
-                <label className="flex items-center gap-3 cursor-pointer">
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
                   <input
-                    type="checkbox"
-                    checked={triggers.shallowFront}
-                    onChange={(e) => setTriggers({...triggers, shallowFront: e.target.checked})}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    type="radio"
+                    name="synopticTrigger"
+                    value="shallowFront"
+                    checked={selectedTrigger === 'shallowFront'}
+                    onChange={(e) => setSelectedTrigger(e.target.checked ? e.target.value : '')}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700 dark:text-gray-300">Shallow Pre-Frontal Boundary</span>
                 </label>
@@ -562,7 +570,7 @@ function App() {
               
               <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg transition-colors duration-300">
                 <p className="text-sm text-yellow-800 dark:text-yellow-300">
-                  93% of early stratus onset cases (≤03Z) have at least one trigger present
+                  93% of early stratus onset cases (≤03Z) had one of these triggers present
                 </p>
               </div>
             </div>
@@ -670,7 +678,7 @@ function App() {
                 <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Analysis</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{prediction.reasoning}</p>
                 {hasTrigger() && (
-                  <p className="text-sm text-yellow-700 dark:text-yellow-400 font-medium">⚡ Synoptic trigger detected - early onset likely</p>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-400 font-medium">⚡ Synoptic trigger detected - early onset more likely</p>
                 )}
               </div>
 
