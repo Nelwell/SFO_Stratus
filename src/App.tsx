@@ -447,7 +447,7 @@ function App() {
 
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Afternoon Dewpoint °F
+                  Minimum Afternoon Dewpoint °F
                 </label>
                 <input
                   type="number"
