@@ -284,13 +284,13 @@ function App() {
               </div>
               <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg transition-colors duration-300">
                 <div className="flex justify-between text-sm">
-                  <span className="text-red-600 font-medium">SI &gt; 22: Low Probability (21%)</span>
-                  <span className="text-green-600 font-medium">SI &lt; 10: High Probability (91%)</span>
+                  <span className="text-green-600 font-medium">SI &gt; 22: Low Probability (21%)</span>
+                  <span className="text-red-600 font-medium">SI &lt; 10: High Probability (91%)</span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2 mt-2">
                   <div 
                     className={`h-2 rounded-full transition-all duration-300 ${
-                      si < 10 ? 'bg-green-500' : si > 22 ? 'bg-red-500' : 'bg-yellow-500'
+                      si < 10 ? 'bg-red-500' : si > 22 ? 'bg-green-500' : 'bg-yellow-500'
                     }`}
                     style={{ width: `${Math.max(0, Math.min(100, ((30 - si) / 20) * 100))}%` }}
                   ></div>
@@ -586,13 +586,13 @@ function App() {
                   <div className="w-32 h-32 rounded-full border-8 border-gray-200 relative">
                     <div 
                       className={`absolute inset-0 rounded-full border-8 border-transparent ${
-                        prediction.probability > 70 ? 'border-green-500' :
-                        prediction.probability > 40 ? 'border-yellow-500' : 'border-red-500'
+                        prediction.probability > 70 ? 'border-red-500' :
+                        prediction.probability > 40 ? 'border-yellow-500' : 'border-green-500'
                       }`}
                       style={{
                         background: `conic-gradient(${
-                          prediction.probability > 70 ? '#10b981' :
-                          prediction.probability > 40 ? '#f59e0b' : '#ef4444'
+                          prediction.probability > 70 ? '#ef4444' :
+                          prediction.probability > 40 ? '#f59e0b' : '#10b981'
                         } ${prediction.probability * 3.6}deg, #e5e7eb 0deg)`
                       }}
                     ></div>
