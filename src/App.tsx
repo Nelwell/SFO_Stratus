@@ -30,9 +30,9 @@ function App() {
     trend24h: 0.5
   });
   const [offPressure, setOffPressure] = useState<PressureData>({
-    sfo: 1015.0,
+    sfo: 1013.0,
     smf: 0,
-    acv: 1018.0,
+    acv: 1019.0,
     trend24h: -0.2
   });
   const [baseInversion, setBaseInversion] = useState<number>(1400);
