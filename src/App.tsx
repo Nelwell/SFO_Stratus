@@ -17,8 +17,7 @@ interface SynopticTrigger {
 
 interface BurnOffData {
   base: number;
-  thickness: number;
-  time: string;
+  top: number;
 }
 
 function App() {
@@ -46,8 +45,7 @@ function App() {
   });
   const [burnOff, setBurnOff] = useState<BurnOffData>({
     base: 800,
-    thickness: 900,
-    time: '14'
+    top: 1700
   });
   const [month, setMonth] = useState<string>('July');
   const [afternoonDewpoint, setAfternoonDewpoint] = useState<number>(55);
@@ -112,10 +110,11 @@ function App() {
     return thresholds[month as keyof typeof thresholds] || thresholds['July'];
   };
 
-  const calculateBurnOffTime = (base: number, thickness: number) => {
+  const calculateBurnOffTime = (base: number, top: number) => {
+    const thickness = top - base;
     const burnRate = 200; // ft/hr
     const hoursToScatter = thickness / burnRate;
-    const totalHours = (base + thickness) / burnRate;
+    const totalHours = top / burnRate;
     return Math.round(hoursToScatter * 10) / 10;
   };
 
@@ -565,7 +564,7 @@ function App() {
                 <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Cohen Burn-Off Analysis</h2>
               </div>
               
-              <div className="grid md:grid-cols-3 gap-4">
+              <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     14Z Base Height (ft)
@@ -573,30 +572,18 @@ function App() {
                   <input
                     type="number"
                     value={burnOff.base}
-                    onChange={(e) => setBurnOff({...burnOff, base: parseInt(e.target.value)})}
+                    onChange={(e) => setBurnOff({...burnOff, base: parseInt(e.target.value) || 0})}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Thickness (ft)
+                    Cloud Top (ft)
                   </label>
                   <input
                     type="number"
-                    value={burnOff.thickness}
-                    onChange={(e) => setBurnOff({...burnOff, thickness: parseInt(e.target.value)})}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Observation Time
-                  </label>
-                  <input
-                    type="text"
-                    value={burnOff.time}
-                    onChange={(e) => setBurnOff({...burnOff, time: e.target.value})}
-                    placeholder="14Z"
+                    value={burnOff.top}
+                    onChange={(e) => setBurnOff({...burnOff, top: parseInt(e.target.value) || 0})}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
@@ -604,9 +591,9 @@ function App() {
               
               <div className="mt-4 p-3 bg-orange-50 dark:bg-orange-900/30 rounded-lg transition-colors duration-300">
                 <p className="text-sm text-orange-800 dark:text-orange-300">
-                  <strong>Estimated SCT Time:</strong> {calculateBurnOffTime(burnOff.base, burnOff.thickness)} hours after sunrise
+                  <strong>Estimated SCT Time:</strong> {calculateBurnOffTime(burnOff.base, burnOff.top)} hours after sunrise
                   <br />
-                  <strong>Burn Rate:</strong> ~200 ft/hr | <strong>Total Depth:</strong> {burnOff.base + burnOff.thickness}ft
+                  <strong>Burn Rate:</strong> ~200 ft/hr | <strong>Thickness:</strong> {burnOff.top - burnOff.base}ft
                 </p>
               </div>
             </div>
@@ -662,7 +649,7 @@ function App() {
                   <div className="flex justify-between items-center">
                     <span className="font-medium text-orange-800 dark:text-orange-300">SCT Time</span>
                     <span className="text-lg font-bold text-orange-600 dark:text-orange-400">
-                      +{calculateBurnOffTime(burnOff.base, burnOff.thickness)}hrs sunrise
+                      +{calculateBurnOffTime(burnOff.base, burnOff.top)}hrs sunrise
                     </span>
                   </div>
                 </div>
