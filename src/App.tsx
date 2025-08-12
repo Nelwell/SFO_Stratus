@@ -949,7 +949,7 @@ function App() {
                   <div className="flex justify-between items-center">
                     <span className="font-medium text-orange-800 dark:text-orange-300">Burn-Off (SCT)</span>
                     <span className="text-lg font-bold text-orange-600 dark:text-orange-400">
-                      +{prediction.burnOffHours}hrs sunrise
+                      Sunrise + {prediction.burnOffHours}hrs
                     </span>
                   </div>
                   <div className="flex justify-between items-center mt-2 pt-2 border-t border-orange-200 dark:border-orange-700">
