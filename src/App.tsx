@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye, Moon, Globe } from 'lucide-react';
+import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye, Moon, Globe, RefreshCw, Wifi } from 'lucide-react';
+import { fetchKSFOTemperatureData, formatTimestamp, type TemperatureData } from './utils/nwsApi';
 
 // SFO coordinates for sunrise calculation
 const SFO_LAT = 37.6213;
@@ -74,6 +75,9 @@ function App() {
   const [month, setMonth] = useState<string>('July');
   const [afternoonDewpoint, setAfternoonDewpoint] = useState<number>(55);
   const [darkMode, setDarkMode] = useState<boolean>(false);
+  const [temperatureData, setTemperatureData] = useState<TemperatureData | null>(null);
+  const [isLoadingTemps, setIsLoadingTemps] = useState<boolean>(false);
+  const [tempDataError, setTempDataError] = useState<string | null>(null);
 
   // Calculate sunrise time for SFO
   const getSunriseTime = () => {
@@ -109,6 +113,35 @@ function App() {
     
     return `${sunriseHours.toString().padStart(2, '0')}${sunriseMin.toString().padStart(2, '0')}Z`;
   };
+
+  // Fetch temperature data from NWS API
+  const loadTemperatureData = async () => {
+    setIsLoadingTemps(true);
+    setTempDataError(null);
+    
+    try {
+      const data = await fetchKSFOTemperatureData();
+      setTemperatureData(data);
+      
+      // Auto-populate fields if data is available
+      if (data.maxTemp !== null) {
+        setMaxTemp(data.maxTemp);
+      }
+      if (data.maxDewpoint !== null) {
+        setMaxDewpoint(data.maxDewpoint);
+      }
+    } catch (error) {
+      setTempDataError(error instanceof Error ? error.message : 'Failed to fetch temperature data');
+      console.error('Temperature data fetch error:', error);
+    } finally {
+      setIsLoadingTemps(false);
+    }
+  };
+
+  // Load temperature data on component mount
+  useEffect(() => {
+    loadTemperatureData();
+  }, []);
 
   useEffect(() => {
     if (darkMode) {
@@ -451,11 +484,50 @@ function App() {
                 <Thermometer className="h-5 w-5 text-red-500" />
                 <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Stratus Index (SI)</h2>
                 <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 ml-auto">{si.toFixed(1)}</span>
+                <button
+                  onClick={loadTemperatureData}
+                  disabled={isLoadingTemps}
+                  className="ml-2 p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors duration-200 disabled:opacity-50"
+                  title="Refresh temperature data from NWS"
+                >
+                  <RefreshCw className={`h-4 w-4 text-blue-600 dark:text-blue-400 ${isLoadingTemps ? 'animate-spin' : ''}`} />
+                </button>
               </div>
+              
+              {/* Temperature data status */}
+              {temperatureData && (
+                <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/30 rounded-lg transition-colors duration-300">
+                  <div className="flex items-center gap-2 text-sm text-green-800 dark:text-green-300">
+                    <Wifi className="h-4 w-4" />
+                    <span className="font-medium">Auto-populated from {temperatureData.dataSource}</span>
+                  </div>
+                  <div className="text-xs text-green-700 dark:text-green-400 mt-1">
+                    Last updated: {formatTimestamp(temperatureData.timestamp)}
+                  </div>
+                  {temperatureData.maxTemp !== null && (
+                    <div className="text-xs text-green-700 dark:text-green-400">
+                      Max Temp: {temperatureData.maxTemp}°F | Max Dewpoint: {temperatureData.maxDewpoint || 'N/A'}°F
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {tempDataError && (
+                <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg transition-colors duration-300">
+                  <div className="flex items-center gap-2 text-sm text-yellow-800 dark:text-yellow-300">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span className="font-medium">Unable to fetch live data</span>
+                  </div>
+                  <div className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
+                    {tempDataError} - Using manual input
+                  </div>
+                </div>
+              )}
+              
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Max Temperature (20-24Z) °F
+                    Max Temperature (20-24Z) °F {temperatureData?.maxTemp && <span className="text-green-600 text-xs">(Auto)</span>}
                   </label>
                   <input
                     type="number"
@@ -466,7 +538,7 @@ function App() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Max Dewpoint (20-24Z) °F
+                    Max Dewpoint (20-24Z) °F {temperatureData?.maxDewpoint && <span className="text-green-600 text-xs">(Auto)</span>}
                   </label>
                   <input
                     type="number"
