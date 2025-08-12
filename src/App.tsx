@@ -24,6 +24,10 @@ interface BurnOffData {
   top: number;
 }
 
+interface WindData {
+  direction: number;
+  speed: number;
+}
 function App() {
   const [maxTemp, setMaxTemp] = useState<number>(75);
   const [maxDewpoint, setMaxDewpoint] = useState<number>(58);
@@ -40,7 +44,7 @@ function App() {
     trend24h: -0.2
   });
   const [baseInversion, setBaseInversion] = useState<number>(1400);
-  const [wind2k, setWind2k] = useState<string>('W15');
+  const [wind2k, setWind2k] = useState<WindData>({ direction: 270, speed: 15 });
   const [triggers, setTriggers] = useState<SynopticTrigger>({
     deepeningTrough: false,
     shortwaveTrough: false,
@@ -287,7 +291,7 @@ function App() {
     }
 
     // Wind effects
-    if (wind2k.startsWith('W') && parseInt(wind2k.slice(1)) > 10) {
+    if ((wind2k.direction >= 240 && wind2k.direction <= 300) && wind2k.speed > 10) {
       startTime = Math.max(1, startTime - 1);
       probability *= 1.1;
     }
@@ -517,17 +521,42 @@ function App() {
                     {baseInversion < 500 ? '⚠️ No formation' : baseInversion < 1000 ? '⚠️ Delayed' : '✅ Normal'}
                   </p>
                 </div>
-                <div>
+                <div className="space-y-4">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     2K Winds
                   </label>
-                  <input
-                    type="text"
-                    value={wind2k}
-                    onChange={(e) => setWind2k(e.target.value)}
-                    placeholder="W15, E08, etc."
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        Direction (°)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="360"
+                        step="10"
+                        value={wind2k.direction}
+                        onChange={(e) => setWind2k({...wind2k, direction: parseInt(e.target.value) || 0})}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        Speed (KT)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={wind2k.speed}
+                        onChange={(e) => setWind2k({...wind2k, speed: parseInt(e.target.value) || 0})}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                      />
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    Direction: Wind coming from (270° = West)
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
