@@ -610,7 +610,7 @@ function App() {
             {/* Environmental Factors */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
               <div className="flex items-center gap-2 mb-4">
-                <Eye className="h-5 w-5 text-purple-500" />
+                <Gauge className="h-5 w-5 text-purple-500" />
                 <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Environmental Factors</h2>
               </div>
               
