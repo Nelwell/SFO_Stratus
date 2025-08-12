@@ -122,6 +122,8 @@ function App() {
   const calculateON = () => onPressure.sfo - onPressure.smf;
   const calculateOFF = () => offPressure.acv - offPressure.sfo;
 
+  const currentSynopticEffect = getSynopticPatternEffect();
+
   const getSITiming = (si: number) => {
     const timingTable = [
       { si: 9, start: 1, end: 21, noCigProb: 5.9 },
@@ -227,12 +229,12 @@ function App() {
   };
 
   const getFinalPrediction = () => {
+  const getFinalPrediction = (synopticEffect: SynopticPattern) => {
     const si = calculateSI();
     const on = calculateON();
     const off = calculateOFF();
     const siTiming = getSITiming(si);
     const monthlyThresh = getMonthlyThresholds();
-    const synopticEffect = getSynopticPatternEffect();
     
     let startTime = siTiming.start;
     let probability = 100 - siTiming.noCigProb;
@@ -380,7 +382,7 @@ function App() {
     };
   };
 
-  const prediction = getFinalPrediction();
+  const prediction = getFinalPrediction(currentSynopticEffect);
   const si = calculateSI();
 
   return (
@@ -715,13 +717,13 @@ function App() {
               
               <div className="mt-4 p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg transition-colors duration-300">
                 <p className="text-sm text-indigo-800 dark:text-indigo-300">
-                  <strong>Selected Patterns:</strong> {synopticEffect.selected ? synopticEffect.type : 'None'}
+                  <strong>Selected Patterns:</strong> {currentSynopticEffect.selected ? currentSynopticEffect.type : 'None'}
                   <br />
-                  <strong>Combined Risk Factor:</strong> {(synopticEffect.riskMultiplier * 100).toFixed(0)}% of baseline
-                  {synopticEffect.timingAdjustment !== 0 && (
+                  <strong>Combined Risk Factor:</strong> {(currentSynopticEffect.riskMultiplier * 100).toFixed(0)}% of baseline
+                  {currentSynopticEffect.timingAdjustment !== 0 && (
                     <>
                       <br />
-                      <strong>Combined Timing:</strong> {synopticEffect.timingAdjustment > 0 ? 'Delayed' : 'Earlier'} by {Math.abs(synopticEffect.timingAdjustment).toFixed(1)} hours
+                      <strong>Combined Timing:</strong> {currentSynopticEffect.timingAdjustment > 0 ? 'Delayed' : 'Earlier'} by {Math.abs(currentSynopticEffect.timingAdjustment).toFixed(1)} hours
                     </>
                   )}
                 </p>
