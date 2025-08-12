@@ -423,7 +423,7 @@ function App() {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-4">
             <Cloud className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-            <h1 className="text-3xl font-bold text-gray-800 dark:text-white">SFO Marine Layer Forecaster</h1>
+            <h1 className="text-3xl font-bold text-gray-800 dark:text-white">SFO Stratus Prediction Tool</h1>
             <button
               onClick={() => setDarkMode(!darkMode)}
               className="ml-4 p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200"
