@@ -881,14 +881,14 @@ function App() {
                     <span className="text-xl font-bold text-blue-600 dark:text-blue-400">{prediction.startTime}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="font-medium text-blue-800 dark:text-blue-300">End Time</span>
+                    <span className="font-medium text-blue-800 dark:text-blue-300">SI End Time</span>
                     <span className="text-xl font-bold text-blue-600 dark:text-blue-400">{prediction.endTime}</span>
                   </div>
                 </div>
 
                 <div className="bg-orange-50 dark:bg-orange-900/30 rounded-lg p-4 transition-colors duration-300">
                   <div className="flex justify-between items-center">
-                    <span className="font-medium text-orange-800 dark:text-orange-300">SCT Time</span>
+                    <span className="font-medium text-orange-800 dark:text-orange-300">Burn-Off (SCT)</span>
                     <span className="text-lg font-bold text-orange-600 dark:text-orange-400">
                       +{calculateBurnOffTime(burnOff.base, burnOff.top)}hrs sunrise
                     </span>
