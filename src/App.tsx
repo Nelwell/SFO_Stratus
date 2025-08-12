@@ -838,7 +838,7 @@ function App() {
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    14Z Base Height (ft)
+                    14Z Ceiling Base Height (ft)
                   </label>
                   <input
                     type="number"
