@@ -19,6 +19,14 @@ interface SynopticTrigger {
   shallowFront: boolean;
 }
 
+interface SynopticPattern {
+  thermalLow: boolean;
+  surfaceHigh: boolean;
+  upperRidge: boolean;
+  upperTrough: boolean;
+  cutoffLow: boolean;
+}
+
 interface BurnOffData {
   base: number;
   top: number;
@@ -52,6 +60,13 @@ function App() {
     shallowFront: false
   });
   const [selectedTrigger, setSelectedTrigger] = useState<string>('');
+  const [synopticPatterns, setSynopticPatterns] = useState<SynopticPattern>({
+    thermalLow: false,
+    surfaceHigh: false,
+    upperRidge: false,
+    upperTrough: false,
+    cutoffLow: false
+  });
   const [burnOff, setBurnOff] = useState<BurnOffData>({
     base: 800,
     top: 1700
@@ -176,12 +191,65 @@ function App() {
     return selectedTrigger !== '';
   };
 
+  const getSynopticPatternEffects = () => {
+    let probabilityMultiplier = 1.0;
+    let timingAdjustment = 0;
+    let effects = [];
+
+    // Surface patterns
+    if (synopticPatterns.thermalLow) {
+      probabilityMultiplier *= 1.25;
+      timingAdjustment -= 1;
+      effects.push('Thermal low enhances onshore flow');
+    }
+
+    if (synopticPatterns.surfaceHigh) {
+      if (synopticPatterns.thermalLow) {
+        // Optimal pattern: surface high offshore + thermal low inland
+        probabilityMultiplier *= 1.15;
+        timingAdjustment -= 0.5;
+        effects.push('Surface high offshore strengthens pressure gradient');
+      } else {
+        // Surface high without thermal low can suppress marine layer
+        probabilityMultiplier *= 0.85;
+        effects.push('Surface high may suppress marine layer without thermal low');
+      }
+    }
+
+    // Upper-level patterns
+    if (synopticPatterns.upperRidge) {
+      probabilityMultiplier *= 1.2;
+      effects.push('Upper ridge enhances subsidence and inversion strength');
+    }
+
+    if (synopticPatterns.upperTrough) {
+      probabilityMultiplier *= 0.8;
+      timingAdjustment += 1;
+      effects.push('Upper trough weakens inversion and delays onset');
+    }
+
+    if (synopticPatterns.cutoffLow) {
+      probabilityMultiplier *= 0.7;
+      timingAdjustment += 1.5;
+      effects.push('Cutoff low disrupts typical marine layer pattern');
+    }
+
+    // Interaction effects
+    if (synopticPatterns.upperRidge && synopticPatterns.thermalLow) {
+      probabilityMultiplier *= 1.1; // Additional boost for optimal combination
+      effects.push('Upper ridge + thermal low: optimal marine layer pattern');
+    }
+
+    return { probabilityMultiplier, timingAdjustment, effects };
+  };
+
   const getFinalPrediction = () => {
     const si = calculateSI();
     const on = calculateON();
     const off = calculateOFF();
     const siTiming = getSITiming(si);
     const monthlyThresh = getMonthlyThresholds();
+    const synopticEffects = getSynopticPatternEffects();
     
     let startTime = siTiming.start;
     let probability = 100 - siTiming.noCigProb;
@@ -196,7 +264,8 @@ function App() {
         probability: 5,
         confidence: 'High',
         warnings: ['Base inversion below 500ft prevents stratus formation'],
-        reasoning: 'Insufficient inversion height for marine layer development'
+        reasoning: `SI=${si.toFixed(1)}, ON=${on.toFixed(1)}mb, OFF=${off.toFixed(1)}mb, BI=${baseInversion}ft`,
+        synopticEffects: synopticEffects.effects
       };
     }
 
@@ -289,6 +358,11 @@ function App() {
       probability *= 1.3;
       confidence = 'High';
     }
+
+    // Apply synoptic pattern effects
+    probability *= synopticEffects.probabilityMultiplier;
+    startTime += synopticEffects.timingAdjustment;
+    startTime = Math.max(1, startTime); // Ensure minimum start time of 1Z
 
     // Wind effects
     if ((wind2k.direction >= 240 && wind2k.direction <= 300) && wind2k.speed > 10) {
@@ -644,6 +718,82 @@ function App() {
               </div>
             </div>
 
+            {/* Synoptic Patterns */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
+              <div className="flex items-center gap-2 mb-4">
+                <Wind className="h-5 w-5 text-purple-500" />
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Synoptic Patterns</h2>
+                <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">Multiple selections allowed</span>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Surface Patterns</h3>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="checkbox"
+                        checked={synopticPatterns.thermalLow}
+                        onChange={(e) => setSynopticPatterns({...synopticPatterns, thermalLow: e.target.checked})}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Thermal Low (Central Valley)</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="checkbox"
+                        checked={synopticPatterns.surfaceHigh}
+                        onChange={(e) => setSynopticPatterns({...synopticPatterns, surfaceHigh: e.target.checked})}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Surface High (Offshore)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Upper-Level Patterns</h3>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="checkbox"
+                        checked={synopticPatterns.upperRidge}
+                        onChange={(e) => setSynopticPatterns({...synopticPatterns, upperRidge: e.target.checked})}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Upper Ridge</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="checkbox"
+                        checked={synopticPatterns.upperTrough}
+                        onChange={(e) => setSynopticPatterns({...synopticPatterns, upperTrough: e.target.checked})}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Upper Trough</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="checkbox"
+                        checked={synopticPatterns.cutoffLow}
+                        onChange={(e) => setSynopticPatterns({...synopticPatterns, cutoffLow: e.target.checked})}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Cutoff Low</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-4 p-3 bg-purple-50 dark:bg-purple-900/30 rounded-lg transition-colors duration-300">
+                <p className="text-sm text-purple-800 dark:text-purple-300">
+                  <strong>Optimal Pattern:</strong> Upper ridge + thermal low + offshore surface high enhances marine layer formation
+                </p>
+              </div>
+            </div>
             {/* Burn-Off Analysis */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
               <div className="flex items-center gap-2 mb-4">
@@ -754,6 +904,14 @@ function App() {
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{prediction.reasoning}</p>
                 {hasTrigger() && (
                   <p className="text-sm text-yellow-700 dark:text-yellow-400 font-medium">⚡ Synoptic trigger detected - early onset more likely</p>
+                )}
+                {prediction.synopticEffects && prediction.synopticEffects.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-300 dark:border-gray-600">
+                    <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Synoptic Pattern Effects:</p>
+                    {prediction.synopticEffects.map((effect, idx) => (
+                      <p key={idx} className="text-xs text-purple-600 dark:text-purple-400">• {effect}</p>
+                    ))}
+                  </div>
                 )}
               </div>
 
