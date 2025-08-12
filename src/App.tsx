@@ -521,7 +521,7 @@ function App() {
                     {baseInversion < 500 ? '⚠️ No formation' : baseInversion < 1000 ? '⚠️ Delayed' : '✅ Normal'}
                   </p>
                 </div>
-                <div className="space-y-4">
+                <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     2K Winds
                   </label>
@@ -553,9 +553,6 @@ function App() {
                         className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                       />
                     </div>
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Direction: Wind coming from (270° = West)
                   </div>
                 </div>
                 <div>
