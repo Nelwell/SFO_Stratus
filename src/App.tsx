@@ -523,36 +523,26 @@ function App() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    2K Winds
+                    2K Winds (Direction °, Speed KT)
                   </label>
                   <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                        Direction (°)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="360"
-                        step="10"
-                        value={wind2k.direction}
-                        onChange={(e) => setWind2k({...wind2k, direction: parseInt(e.target.value) || 0})}
-                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                        Speed (KT)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="50"
-                        value={wind2k.speed}
-                        onChange={(e) => setWind2k({...wind2k, speed: parseInt(e.target.value) || 0})}
-                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                      />
-                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      max="360"
+                      step="10"
+                      value={wind2k.direction}
+                      onChange={(e) => setWind2k({...wind2k, direction: parseInt(e.target.value) || 0})}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={wind2k.speed}
+                      onChange={(e) => setWind2k({...wind2k, speed: parseInt(e.target.value) || 0})}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                    />
                   </div>
                 </div>
                 <div>
