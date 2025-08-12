@@ -976,14 +976,6 @@ function App() {
                     ))}
                   </div>
                 )}
-                {prediction.synopticEffects && prediction.synopticEffects.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-gray-300 dark:border-gray-600">
-                    <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Synoptic Pattern Effects:</p>
-                    {prediction.synopticEffects.map((effect, idx) => (
-                      <p key={idx} className="text-xs text-purple-600 dark:text-purple-400">• {effect}</p>
-                    ))}
-                  </div>
-                )}
               </div>
 
               {/* Warnings */}
