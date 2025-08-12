@@ -35,6 +35,7 @@ interface WindData {
   direction: number;
   speed: number;
 }
+
 function App() {
   const [maxTemp, setMaxTemp] = useState<number>(75);
   const [maxDewpoint, setMaxDewpoint] = useState<number>(58);
@@ -228,7 +229,7 @@ function App() {
     };
   };
 
-  const getFinalPrediction = () => {
+  const getFinalPrediction = (synopticEffect: SynopticPattern) => {
     const si = calculateSI();
     const on = calculateON();
     const off = calculateOFF();
@@ -343,8 +344,8 @@ function App() {
     }
 
     // Synoptic pattern effects
-    probability *= currentSynopticEffect.riskMultiplier;
-    startTime += currentSynopticEffect.timingAdjustment;
+    probability *= synopticEffect.riskMultiplier;
+    startTime += synopticEffect.timingAdjustment;
     
     if (synopticPatterns.cutoff_low || synopticPatterns.trough) {
       confidence = 'High';
@@ -377,11 +378,11 @@ function App() {
       confidence,
       warnings,
       reasoning: `SI=${si.toFixed(1)}, ON=${on.toFixed(1)}mb, OFF=${off.toFixed(1)}mb, BI=${baseInversion}ft`
-        + ` | Pattern: ${currentSynopticEffect.type}`
+        + ` | Pattern: ${synopticEffect.type}`
     };
   };
 
-  const prediction = getFinalPrediction();
+  const prediction = getFinalPrediction(currentSynopticEffect);
   const si = calculateSI();
 
   return (
