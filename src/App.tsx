@@ -983,7 +983,7 @@ function App() {
                 <div className="bg-red-50 dark:bg-red-900/30 rounded-lg p-4 transition-colors duration-300">
                   <h3 className="font-semibold text-red-700 dark:text-red-400 mb-2 flex items-center gap-2">
                     <AlertTriangle className="h-4 w-4" />
-                    Warnings
+                    Notice!
                   </h3>
                   <ul className="text-sm text-red-600 dark:text-red-400 space-y-1">
                     {prediction.warnings.map((warning, idx) => (
