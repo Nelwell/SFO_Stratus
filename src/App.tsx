@@ -34,6 +34,7 @@ interface WindData {
   direction: number;
   speed: number;
 }
+
 function App() {
   const [maxTemp, setMaxTemp] = useState<number>(75);
   const [maxDewpoint, setMaxDewpoint] = useState<number>(58);
@@ -185,7 +186,7 @@ function App() {
   };
 
   const getUpperPatternEffect = () => {
-    const patterns: { [key: string]: UpperPattern } = {
+    const patterns: { [key: string]: SynopticPattern } = {
       'ridge': { type: 'High Pressure Ridge', riskMultiplier: 0.85, timingAdjustment: 1.0 },
       'trough': { type: 'Low Pressure Trough', riskMultiplier: 1.25, timingAdjustment: -0.5 },
       'cutoff_low': { type: 'Cutoff Low', riskMultiplier: 1.35, timingAdjustment: -1.0 },
@@ -196,7 +197,7 @@ function App() {
   };
 
   const getSurfacePatternEffect = () => {
-    const patterns: { [key: string]: SurfacePattern } = {
+    const patterns: { [key: string]: SynopticPattern } = {
       'none': { type: 'None', riskMultiplier: 1.0, timingAdjustment: 0 },
       'thermal_low': { type: 'Thermal Low', riskMultiplier: 1.15, timingAdjustment: 0 },
       'surface_trough': { type: 'Surface Trough', riskMultiplier: 1.1, timingAdjustment: -0.25 },
@@ -366,7 +367,6 @@ function App() {
   const si = calculateSI();
 
   return (
-    <>
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 dark:from-gray-900 dark:via-gray-800 dark:to-slate-900 transition-colors duration-300">
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         {/* Header */}
@@ -428,8 +428,8 @@ function App() {
               </div>
               <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg transition-colors duration-300">
                 <div className="flex justify-between text-sm">
-                  <span className="text-green-600 font-medium">SI &gt; 22: Low Probability (21%)</span>
-                  <span className="text-red-600 font-medium">SI &lt; 10: High Probability (91%)</span>
+                  <span className="text-green-600 font-medium">SI > 22: Low Probability (21%)</span>
+                  <span className="text-red-600 font-medium">SI < 10: High Probability (91%)</span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2 mt-2">
                   <div 
@@ -627,7 +627,7 @@ function App() {
               </div>
             </div>
 
-            {/* Synoptic Triggers */}
+            {/* Synoptic Patterns */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
               <div className="flex items-center gap-2 mb-4">
                 <Wind className="h-5 w-5 text-indigo-500" />
@@ -769,12 +769,14 @@ function App() {
               </div>
             </div>
 
+            {/* Synoptic Triggers */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
               <div className="flex items-center gap-2 mb-4">
                 <AlertTriangle className="h-5 w-5 text-yellow-500" />
                 <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Synoptic Triggers</h2>
                 {hasTrigger() && <span className="text-sm bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 px-2 py-1 rounded">Early Onset More Likely ≤03Z</span>}
               </div>
+              <div className="space-y-2">
                 <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
                   <input
                     type="radio"
@@ -821,6 +823,18 @@ function App() {
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700 dark:text-gray-300">Shallow Pre-Frontal Boundary</span>
+                </label>
+                
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                  <input
+                    type="radio"
+                    name="synopticTrigger"
+                    value=""
+                    checked={selectedTrigger === ''}
+                    onChange={(e) => setSelectedTrigger('')}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">None</span>
                 </label>
               </div>
               
@@ -971,7 +985,6 @@ function App() {
         </div>
       </div>
     </div>
-    </>
   );
 }
 
