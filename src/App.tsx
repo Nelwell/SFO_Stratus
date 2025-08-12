@@ -19,6 +19,12 @@ interface SynopticTrigger {
   shallowFront: boolean;
 }
 
+interface SynopticPattern {
+  type: string;
+  riskMultiplier: number;
+  timingAdjustment: number;
+}
+
 interface BurnOffData {
   base: number;
   top: number;
@@ -52,6 +58,7 @@ function App() {
     shallowFront: false
   });
   const [selectedTrigger, setSelectedTrigger] = useState<string>('');
+  const [synopticPattern, setSynopticPattern] = useState<string>('ridge');
   const [burnOff, setBurnOff] = useState<BurnOffData>({
     base: 800,
     top: 1700
@@ -176,12 +183,25 @@ function App() {
     return selectedTrigger !== '';
   };
 
+  const getSynopticPatternEffect = () => {
+    const patterns: { [key: string]: SynopticPattern } = {
+      'ridge': { type: 'High Pressure Ridge', riskMultiplier: 0.85, timingAdjustment: 1.0 },
+      'trough': { type: 'Low Pressure Trough', riskMultiplier: 1.25, timingAdjustment: -0.5 },
+      'thermal_low': { type: 'Thermal Low', riskMultiplier: 1.15, timingAdjustment: 0 },
+      'cutoff_low': { type: 'Cutoff Low', riskMultiplier: 1.35, timingAdjustment: -1.0 },
+      'zonal_flow': { type: 'Zonal Flow', riskMultiplier: 0.95, timingAdjustment: 0.5 },
+      'blocking_pattern': { type: 'Blocking Pattern', riskMultiplier: 0.75, timingAdjustment: 1.5 }
+    };
+    return patterns[synopticPattern] || patterns['ridge'];
+  };
+
   const getFinalPrediction = () => {
     const si = calculateSI();
     const on = calculateON();
     const off = calculateOFF();
     const siTiming = getSITiming(si);
     const monthlyThresh = getMonthlyThresholds();
+    const synopticEffect = getSynopticPatternEffect();
     
     let startTime = siTiming.start;
     let probability = 100 - siTiming.noCigProb;
@@ -290,6 +310,17 @@ function App() {
       confidence = 'High';
     }
 
+    // Synoptic pattern effects
+    probability *= synopticEffect.riskMultiplier;
+    startTime += synopticEffect.timingAdjustment;
+    
+    if (synopticPattern === 'cutoff_low' || synopticPattern === 'trough') {
+      confidence = 'High';
+    } else if (synopticPattern === 'blocking_pattern') {
+      confidence = 'High';
+      warnings.push('Blocking pattern - stratus formation less likely');
+    }
+
     // Wind effects
     if ((wind2k.direction >= 240 && wind2k.direction <= 300) && wind2k.speed > 10) {
       startTime = Math.max(1, startTime - 1);
@@ -312,6 +343,7 @@ function App() {
       confidence,
       warnings,
       reasoning: `SI=${si.toFixed(1)}, ON=${on.toFixed(1)}mb, OFF=${off.toFixed(1)}mb, BI=${baseInversion}ft`
+        + ` | Pattern: ${synopticEffect.type}`
     };
   };
 
@@ -580,6 +612,101 @@ function App() {
             </div>
 
             {/* Synoptic Triggers */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
+              <div className="flex items-center gap-2 mb-4">
+                <Wind className="h-5 w-5 text-indigo-500" />
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Synoptic Pattern</h2>
+              </div>
+              
+              <div className="grid md:grid-cols-2 gap-4">
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                  <input
+                    type="radio"
+                    name="synopticPattern"
+                    value="ridge"
+                    checked={synopticPattern === 'ridge'}
+                    onChange={(e) => setSynopticPattern(e.target.value)}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">High Pressure Ridge</span>
+                </label>
+                
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                  <input
+                    type="radio"
+                    name="synopticPattern"
+                    value="trough"
+                    checked={synopticPattern === 'trough'}
+                    onChange={(e) => setSynopticPattern(e.target.value)}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Low Pressure Trough</span>
+                </label>
+                
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                  <input
+                    type="radio"
+                    name="synopticPattern"
+                    value="thermal_low"
+                    checked={synopticPattern === 'thermal_low'}
+                    onChange={(e) => setSynopticPattern(e.target.value)}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Thermal Low</span>
+                </label>
+                
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                  <input
+                    type="radio"
+                    name="synopticPattern"
+                    value="cutoff_low"
+                    checked={synopticPattern === 'cutoff_low'}
+                    onChange={(e) => setSynopticPattern(e.target.value)}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Cutoff Low</span>
+                </label>
+                
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                  <input
+                    type="radio"
+                    name="synopticPattern"
+                    value="zonal_flow"
+                    checked={synopticPattern === 'zonal_flow'}
+                    onChange={(e) => setSynopticPattern(e.target.value)}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Zonal Flow</span>
+                </label>
+                
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                  <input
+                    type="radio"
+                    name="synopticPattern"
+                    value="blocking_pattern"
+                    checked={synopticPattern === 'blocking_pattern'}
+                    onChange={(e) => setSynopticPattern(e.target.value)}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Blocking Pattern</span>
+                </label>
+              </div>
+              
+              <div className="mt-4 p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg transition-colors duration-300">
+                <p className="text-sm text-indigo-800 dark:text-indigo-300">
+                  <strong>Current Pattern:</strong> {getSynopticPatternEffect().type}
+                  <br />
+                  <strong>Risk Factor:</strong> {(getSynopticPatternEffect().riskMultiplier * 100).toFixed(0)}% of baseline
+                  {getSynopticPatternEffect().timingAdjustment !== 0 && (
+                    <>
+                      <br />
+                      <strong>Timing:</strong> {getSynopticPatternEffect().timingAdjustment > 0 ? 'Delayed' : 'Earlier'} by {Math.abs(getSynopticPatternEffect().timingAdjustment)} hours
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
               <div className="flex items-center gap-2 mb-4">
                 <AlertTriangle className="h-5 w-5 text-yellow-500" />
