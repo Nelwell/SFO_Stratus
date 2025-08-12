@@ -38,18 +38,21 @@ const parseMaxFromRemarks = (rawMetar: string): { maxTemp: number | null; maxDew
   
   const remarks = rawMetar.substring(rmkIndex);
   
-  // Parse 6-hourly maximum temperature: 4XXXX (where XXXX is temp in tenths of degrees C)
-  const maxTempMatch = remarks.match(/4(\d{4})/);
-  if (maxTempMatch) {
-    const tempTenthsC = parseInt(maxTempMatch[1]);
-    // Handle negative temperatures (if first digit is 1, it's negative)
-    const tempC = tempTenthsC >= 1000 ? -(tempTenthsC - 1000) / 10 : tempTenthsC / 10;
+  // Parse temperature/dewpoint from T group: TXXXXXXXX (where first 4 digits are temp, last 4 are dewpoint in tenths of degrees C)
+  const tempDewMatch = remarks.match(/T([01])(\d{3})([01])(\d{3})/);
+  if (tempDewMatch) {
+    // Parse temperature
+    const tempSign = tempDewMatch[1] === '1' ? -1 : 1;
+    const tempTenths = parseInt(tempDewMatch[2]);
+    const tempC = (tempSign * tempTenths) / 10;
     maxTemp = celsiusToFahrenheit(tempC);
+    
+    // Parse dewpoint
+    const dewSign = tempDewMatch[3] === '1' ? -1 : 1;
+    const dewTenths = parseInt(tempDewMatch[4]);
+    const dewC = (dewSign * dewTenths) / 10;
+    maxDewpoint = celsiusToFahrenheit(dewC);
   }
-  
-  // Parse 6-hourly minimum temperature: 5XXXX (we'll use this as a fallback for dewpoint estimation)
-  // Note: METAR doesn't typically include max dewpoint in remarks, so we'll use current dewpoint
-  // from the main observation as the best available proxy
   
   return { maxTemp, maxDewpoint };
 };
