@@ -160,12 +160,7 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
 // Format timestamp for display
 export const formatTimestamp = (timestamp: string): string => {
   const date = new Date(timestamp);
-  return date.toLocaleString('en-US', {
-    timeZone: 'UTC',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZoneName: 'short'
-  });
+  const hours = date.getUTCHours().toString().padStart(2, '0');
+  const minutes = date.getUTCMinutes().toString().padStart(2, '0');
+  return `${hours}${minutes}Z`;
 };
