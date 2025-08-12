@@ -58,7 +58,8 @@ function App() {
     shallowFront: false
   });
   const [selectedTrigger, setSelectedTrigger] = useState<string>('');
-  const [synopticPattern, setSynopticPattern] = useState<string>('ridge');
+  const [upperPattern, setUpperPattern] = useState<string>('ridge');
+  const [surfacePattern, setSurfacePattern] = useState<string>('none');
   const [burnOff, setBurnOff] = useState<BurnOffData>({
     base: 800,
     top: 1700
@@ -183,16 +184,25 @@ function App() {
     return selectedTrigger !== '';
   };
 
-  const getSynopticPatternEffect = () => {
-    const patterns: { [key: string]: SynopticPattern } = {
+  const getUpperPatternEffect = () => {
+    const patterns: { [key: string]: UpperPattern } = {
       'ridge': { type: 'High Pressure Ridge', riskMultiplier: 0.85, timingAdjustment: 1.0 },
       'trough': { type: 'Low Pressure Trough', riskMultiplier: 1.25, timingAdjustment: -0.5 },
-      'thermal_low': { type: 'Thermal Low', riskMultiplier: 1.15, timingAdjustment: 0 },
       'cutoff_low': { type: 'Cutoff Low', riskMultiplier: 1.35, timingAdjustment: -1.0 },
       'zonal_flow': { type: 'Zonal Flow', riskMultiplier: 0.95, timingAdjustment: 0.5 },
       'blocking_pattern': { type: 'Blocking Pattern', riskMultiplier: 0.75, timingAdjustment: 1.5 }
     };
-    return patterns[synopticPattern] || patterns['ridge'];
+    return patterns[upperPattern] || patterns['ridge'];
+  };
+
+  const getSurfacePatternEffect = () => {
+    const patterns: { [key: string]: SurfacePattern } = {
+      'none': { type: 'None', riskMultiplier: 1.0, timingAdjustment: 0 },
+      'thermal_low': { type: 'Thermal Low', riskMultiplier: 1.15, timingAdjustment: 0 },
+      'surface_trough': { type: 'Surface Trough', riskMultiplier: 1.1, timingAdjustment: -0.25 },
+      'surface_ridge': { type: 'Surface Ridge', riskMultiplier: 0.9, timingAdjustment: 0.5 }
+    };
+    return patterns[surfacePattern] || patterns['none'];
   };
 
   const getFinalPrediction = () => {
@@ -201,7 +211,8 @@ function App() {
     const off = calculateOFF();
     const siTiming = getSITiming(si);
     const monthlyThresh = getMonthlyThresholds();
-    const synopticEffect = getSynopticPatternEffect();
+    const upperEffect = getUpperPatternEffect();
+    const surfaceEffect = getSurfacePatternEffect();
     
     let startTime = siTiming.start;
     let probability = 100 - siTiming.noCigProb;
@@ -310,13 +321,17 @@ function App() {
       confidence = 'High';
     }
 
-    // Synoptic pattern effects
-    probability *= synopticEffect.riskMultiplier;
-    startTime += synopticEffect.timingAdjustment;
+    // Upper-level pattern effects
+    probability *= upperEffect.riskMultiplier;
+    startTime += upperEffect.timingAdjustment;
     
-    if (synopticPattern === 'cutoff_low' || synopticPattern === 'trough') {
+    // Surface pattern effects
+    probability *= surfaceEffect.riskMultiplier;
+    startTime += surfaceEffect.timingAdjustment;
+    
+    if (upperPattern === 'cutoff_low' || upperPattern === 'trough') {
       confidence = 'High';
-    } else if (synopticPattern === 'blocking_pattern') {
+    } else if (upperPattern === 'blocking_pattern') {
       confidence = 'High';
       warnings.push('Blocking pattern - stratus formation less likely');
     }
@@ -343,7 +358,7 @@ function App() {
       confidence,
       warnings,
       reasoning: `SI=${si.toFixed(1)}, ON=${on.toFixed(1)}mb, OFF=${off.toFixed(1)}mb, BI=${baseInversion}ft`
-        + ` | Pattern: ${synopticEffect.type}`
+        + ` | Upper: ${upperEffect.type}${surfaceEffect.type !== 'None' ? `, Surface: ${surfaceEffect.type}` : ''}`
     };
   };
 
@@ -615,93 +630,139 @@ function App() {
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
               <div className="flex items-center gap-2 mb-4">
                 <Wind className="h-5 w-5 text-indigo-500" />
-                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Synoptic Pattern</h2>
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Synoptic Patterns</h2>
               </div>
               
-              <div className="grid md:grid-cols-2 gap-4">
-                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
-                  <input
-                    type="radio"
-                    name="synopticPattern"
-                    value="ridge"
-                    checked={synopticPattern === 'ridge'}
-                    onChange={(e) => setSynopticPattern(e.target.value)}
-                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">High Pressure Ridge</span>
-                </label>
-                
-                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
-                  <input
-                    type="radio"
-                    name="synopticPattern"
-                    value="trough"
-                    checked={synopticPattern === 'trough'}
-                    onChange={(e) => setSynopticPattern(e.target.value)}
-                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Low Pressure Trough</span>
-                </label>
-                
-                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
-                  <input
-                    type="radio"
-                    name="synopticPattern"
-                    value="thermal_low"
-                    checked={synopticPattern === 'thermal_low'}
-                    onChange={(e) => setSynopticPattern(e.target.value)}
-                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Thermal Low</span>
-                </label>
-                
-                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
-                  <input
-                    type="radio"
-                    name="synopticPattern"
-                    value="cutoff_low"
-                    checked={synopticPattern === 'cutoff_low'}
-                    onChange={(e) => setSynopticPattern(e.target.value)}
-                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Cutoff Low</span>
-                </label>
-                
-                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
-                  <input
-                    type="radio"
-                    name="synopticPattern"
-                    value="zonal_flow"
-                    checked={synopticPattern === 'zonal_flow'}
-                    onChange={(e) => setSynopticPattern(e.target.value)}
-                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Zonal Flow</span>
-                </label>
-                
-                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
-                  <input
-                    type="radio"
-                    name="synopticPattern"
-                    value="blocking_pattern"
-                    checked={synopticPattern === 'blocking_pattern'}
-                    onChange={(e) => setSynopticPattern(e.target.value)}
-                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Blocking Pattern</span>
-                </label>
+              <div className="space-y-6">
+                <div>
+                  <h3 className="font-medium text-gray-700 dark:text-gray-300 mb-3">Upper-Level Pattern</h3>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="radio"
+                        name="upperPattern"
+                        value="ridge"
+                        checked={upperPattern === 'ridge'}
+                        onChange={(e) => setUpperPattern(e.target.value)}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">High Pressure Ridge</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="radio"
+                        name="upperPattern"
+                        value="trough"
+                        checked={upperPattern === 'trough'}
+                        onChange={(e) => setUpperPattern(e.target.value)}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Low Pressure Trough</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="radio"
+                        name="upperPattern"
+                        value="cutoff_low"
+                        checked={upperPattern === 'cutoff_low'}
+                        onChange={(e) => setUpperPattern(e.target.value)}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Cutoff Low</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="radio"
+                        name="upperPattern"
+                        value="zonal_flow"
+                        checked={upperPattern === 'zonal_flow'}
+                        onChange={(e) => setUpperPattern(e.target.value)}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Zonal Flow</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="radio"
+                        name="upperPattern"
+                        value="blocking_pattern"
+                        checked={upperPattern === 'blocking_pattern'}
+                        onChange={(e) => setUpperPattern(e.target.value)}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Blocking Pattern</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-medium text-gray-700 dark:text-gray-300 mb-3">Surface Pattern</h3>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="radio"
+                        name="surfacePattern"
+                        value="none"
+                        checked={surfacePattern === 'none'}
+                        onChange={(e) => setSurfacePattern(e.target.value)}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">None</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="radio"
+                        name="surfacePattern"
+                        value="thermal_low"
+                        checked={surfacePattern === 'thermal_low'}
+                        onChange={(e) => setSurfacePattern(e.target.value)}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Thermal Low</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="radio"
+                        name="surfacePattern"
+                        value="surface_trough"
+                        checked={surfacePattern === 'surface_trough'}
+                        onChange={(e) => setSurfacePattern(e.target.value)}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Surface Trough</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="radio"
+                        name="surfacePattern"
+                        value="surface_ridge"
+                        checked={surfacePattern === 'surface_ridge'}
+                        onChange={(e) => setSurfacePattern(e.target.value)}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Surface Ridge</span>
+                    </label>
+                  </div>
+                </div>
               </div>
               
               <div className="mt-4 p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg transition-colors duration-300">
                 <p className="text-sm text-indigo-800 dark:text-indigo-300">
-                  <strong>Current Pattern:</strong> {getSynopticPatternEffect().type}
+                  <strong>Upper Pattern:</strong> {getUpperPatternEffect().type} 
+                  (Risk: {(getUpperPatternEffect().riskMultiplier * 100).toFixed(0)}%, 
+                  Timing: {getUpperPatternEffect().timingAdjustment > 0 ? '+' : ''}{getUpperPatternEffect().timingAdjustment}hr)
                   <br />
-                  <strong>Risk Factor:</strong> {(getSynopticPatternEffect().riskMultiplier * 100).toFixed(0)}% of baseline
-                  {getSynopticPatternEffect().timingAdjustment !== 0 && (
-                    <>
-                      <br />
-                      <strong>Timing:</strong> {getSynopticPatternEffect().timingAdjustment > 0 ? 'Delayed' : 'Earlier'} by {Math.abs(getSynopticPatternEffect().timingAdjustment)} hours
-                    </>
+                  <strong>Surface Pattern:</strong> {getSurfacePatternEffect().type}
+                  {getSurfacePatternEffect().type !== 'None' && (
+                    <> (Risk: {(getSurfacePatternEffect().riskMultiplier * 100).toFixed(0)}%, 
+                    Timing: {getSurfacePatternEffect().timingAdjustment > 0 ? '+' : ''}{getSurfacePatternEffect().timingAdjustment}hr)</>
                   )}
                 </p>
               </div>
@@ -713,8 +774,6 @@ function App() {
                 <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Synoptic Triggers</h2>
                 {hasTrigger() && <span className="text-sm bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 px-2 py-1 rounded">Early Onset More Likely ≤03Z</span>}
               </div>
-              
-              <div className="grid md:grid-cols-2 gap-4">
                 <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
                   <input
                     type="radio"
