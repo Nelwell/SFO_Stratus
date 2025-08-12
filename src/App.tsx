@@ -223,15 +223,15 @@ function App() {
     }
 
     if (synopticPatterns.upperTrough) {
-      probabilityMultiplier *= 0.8;
-      timingAdjustment += 1;
-      effects.push('Upper trough weakens inversion and delays onset');
+      probabilityMultiplier *= 1.3;
+      timingAdjustment -= 1;
+      effects.push('Upper trough thickens marine layer and raises base inversion');
     }
 
     if (synopticPatterns.cutoffLow) {
-      probabilityMultiplier *= 0.7;
-      timingAdjustment += 1.5;
-      effects.push('Cutoff low disrupts typical marine layer pattern');
+      probabilityMultiplier *= 1.2;
+      timingAdjustment -= 0.5;
+      effects.push('Cutoff low enhances marine layer thickness');
     }
 
     // Interaction effects
@@ -240,6 +240,10 @@ function App() {
       effects.push('Upper ridge + thermal low: optimal marine layer pattern');
     }
 
+    if (synopticPatterns.upperTrough && synopticPatterns.thermalLow) {
+      probabilityMultiplier *= 1.1; // Additional boost for trough + thermal low
+      effects.push('Upper trough + thermal low: enhanced marine layer penetration');
+    }
     return { probabilityMultiplier, timingAdjustment, effects };
   };
 
