@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye, Moon } from 'lucide-react';
+import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye, Moon, Globe } from 'lucide-react';
 
 // SFO coordinates for sunrise calculation
 const SFO_LAT = 37.6213;
@@ -610,7 +610,7 @@ function App() {
             {/* Environmental Factors */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
               <div className="flex items-center gap-2 mb-4">
-                <Gauge className="h-5 w-5 text-purple-500" />
+                <Globe className="h-5 w-5 text-green-500" />
                 <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Environmental Factors</h2>
               </div>
               
