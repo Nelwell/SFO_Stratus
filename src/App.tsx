@@ -23,6 +23,7 @@ interface SynopticPattern {
   type: string;
   riskMultiplier: number;
   timingAdjustment: number;
+  selected: boolean;
 }
 
 interface BurnOffData {
@@ -58,7 +59,14 @@ function App() {
     shallowFront: false
   });
   const [selectedTrigger, setSelectedTrigger] = useState<string>('');
-  const [synopticPattern, setSynopticPattern] = useState<string>('ridge');
+  const [synopticPatterns, setSynopticPatterns] = useState<{ [key: string]: boolean }>({
+    ridge: false,
+    trough: false,
+    thermal_low: false,
+    cutoff_low: false,
+    zonal_flow: false,
+    blocking_pattern: false
+  });
   const [burnOff, setBurnOff] = useState<BurnOffData>({
     base: 800,
     top: 1700
@@ -185,14 +193,37 @@ function App() {
 
   const getSynopticPatternEffect = () => {
     const patterns: { [key: string]: SynopticPattern } = {
-      'ridge': { type: 'High Pressure Ridge', riskMultiplier: 0.85, timingAdjustment: 1.0 },
-      'trough': { type: 'Low Pressure Trough', riskMultiplier: 1.25, timingAdjustment: -0.5 },
-      'thermal_low': { type: 'Thermal Low', riskMultiplier: 1.15, timingAdjustment: 0 },
-      'cutoff_low': { type: 'Cutoff Low', riskMultiplier: 1.35, timingAdjustment: -1.0 },
-      'zonal_flow': { type: 'Zonal Flow', riskMultiplier: 0.95, timingAdjustment: 0.5 },
-      'blocking_pattern': { type: 'Blocking Pattern', riskMultiplier: 0.75, timingAdjustment: 1.5 }
+      'ridge': { type: 'High Pressure Ridge', riskMultiplier: 0.85, timingAdjustment: 1.0, selected: synopticPatterns.ridge },
+      'trough': { type: 'Low Pressure Trough', riskMultiplier: 1.25, timingAdjustment: -0.5, selected: synopticPatterns.trough },
+      'thermal_low': { type: 'Thermal Low', riskMultiplier: 1.15, timingAdjustment: 0, selected: synopticPatterns.thermal_low },
+      'cutoff_low': { type: 'Cutoff Low', riskMultiplier: 1.35, timingAdjustment: -1.0, selected: synopticPatterns.cutoff_low },
+      'zonal_flow': { type: 'Zonal Flow', riskMultiplier: 0.95, timingAdjustment: 0.5, selected: synopticPatterns.zonal_flow },
+      'blocking_pattern': { type: 'Blocking Pattern', riskMultiplier: 0.75, timingAdjustment: 1.5, selected: synopticPatterns.blocking_pattern }
     };
-    return patterns[synopticPattern] || patterns['ridge'];
+    
+    const selectedPatterns = Object.entries(patterns).filter(([_, pattern]) => pattern.selected);
+    
+    if (selectedPatterns.length === 0) {
+      return { type: 'No Pattern Selected', riskMultiplier: 1.0, timingAdjustment: 0, selected: false };
+    }
+    
+    // Combine effects of multiple patterns
+    let combinedRiskMultiplier = 1.0;
+    let combinedTimingAdjustment = 0;
+    const patternNames: string[] = [];
+    
+    selectedPatterns.forEach(([_, pattern]) => {
+      combinedRiskMultiplier *= pattern.riskMultiplier;
+      combinedTimingAdjustment += pattern.timingAdjustment;
+      patternNames.push(pattern.type);
+    });
+    
+    return {
+      type: patternNames.join(' + '),
+      riskMultiplier: combinedRiskMultiplier,
+      timingAdjustment: combinedTimingAdjustment,
+      selected: true
+    };
   };
 
   const getFinalPrediction = () => {
@@ -314,9 +345,11 @@ function App() {
     probability *= synopticEffect.riskMultiplier;
     startTime += synopticEffect.timingAdjustment;
     
-    if (synopticPattern === 'cutoff_low' || synopticPattern === 'trough') {
+    if (synopticPatterns.cutoff_low || synopticPatterns.trough) {
       confidence = 'High';
-    } else if (synopticPattern === 'blocking_pattern') {
+    }
+    
+    if (synopticPatterns.blocking_pattern) {
       confidence = 'High';
       warnings.push('Blocking pattern - stratus formation less likely');
     }
@@ -621,11 +654,9 @@ function App() {
               <div className="grid md:grid-cols-2 gap-4">
                 <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
                   <input
-                    type="radio"
-                    name="synopticPattern"
-                    value="ridge"
-                    checked={synopticPattern === 'ridge'}
-                    onChange={(e) => setSynopticPattern(e.target.value)}
+                    type="checkbox"
+                    checked={synopticPatterns.ridge}
+                    onChange={(e) => setSynopticPatterns({...synopticPatterns, ridge: e.target.checked})}
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700 dark:text-gray-300">High Pressure Ridge</span>
@@ -633,11 +664,9 @@ function App() {
                 
                 <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
                   <input
-                    type="radio"
-                    name="synopticPattern"
-                    value="trough"
-                    checked={synopticPattern === 'trough'}
-                    onChange={(e) => setSynopticPattern(e.target.value)}
+                    type="checkbox"
+                    checked={synopticPatterns.trough}
+                    onChange={(e) => setSynopticPatterns({...synopticPatterns, trough: e.target.checked})}
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700 dark:text-gray-300">Low Pressure Trough</span>
@@ -645,11 +674,9 @@ function App() {
                 
                 <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
                   <input
-                    type="radio"
-                    name="synopticPattern"
-                    value="thermal_low"
-                    checked={synopticPattern === 'thermal_low'}
-                    onChange={(e) => setSynopticPattern(e.target.value)}
+                    type="checkbox"
+                    checked={synopticPatterns.thermal_low}
+                    onChange={(e) => setSynopticPatterns({...synopticPatterns, thermal_low: e.target.checked})}
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700 dark:text-gray-300">Thermal Low</span>
@@ -657,11 +684,9 @@ function App() {
                 
                 <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
                   <input
-                    type="radio"
-                    name="synopticPattern"
-                    value="cutoff_low"
-                    checked={synopticPattern === 'cutoff_low'}
-                    onChange={(e) => setSynopticPattern(e.target.value)}
+                    type="checkbox"
+                    checked={synopticPatterns.cutoff_low}
+                    onChange={(e) => setSynopticPatterns({...synopticPatterns, cutoff_low: e.target.checked})}
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700 dark:text-gray-300">Cutoff Low</span>
@@ -669,11 +694,9 @@ function App() {
                 
                 <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
                   <input
-                    type="radio"
-                    name="synopticPattern"
-                    value="zonal_flow"
-                    checked={synopticPattern === 'zonal_flow'}
-                    onChange={(e) => setSynopticPattern(e.target.value)}
+                    type="checkbox"
+                    checked={synopticPatterns.zonal_flow}
+                    onChange={(e) => setSynopticPatterns({...synopticPatterns, zonal_flow: e.target.checked})}
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700 dark:text-gray-300">Zonal Flow</span>
@@ -681,11 +704,9 @@ function App() {
                 
                 <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
                   <input
-                    type="radio"
-                    name="synopticPattern"
-                    value="blocking_pattern"
-                    checked={synopticPattern === 'blocking_pattern'}
-                    onChange={(e) => setSynopticPattern(e.target.value)}
+                    type="checkbox"
+                    checked={synopticPatterns.blocking_pattern}
+                    onChange={(e) => setSynopticPatterns({...synopticPatterns, blocking_pattern: e.target.checked})}
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700 dark:text-gray-300">Blocking Pattern</span>
@@ -694,13 +715,13 @@ function App() {
               
               <div className="mt-4 p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg transition-colors duration-300">
                 <p className="text-sm text-indigo-800 dark:text-indigo-300">
-                  <strong>Current Pattern:</strong> {getSynopticPatternEffect().type}
+                  <strong>Selected Patterns:</strong> {synopticEffect.selected ? synopticEffect.type : 'None'}
                   <br />
-                  <strong>Risk Factor:</strong> {(getSynopticPatternEffect().riskMultiplier * 100).toFixed(0)}% of baseline
-                  {getSynopticPatternEffect().timingAdjustment !== 0 && (
+                  <strong>Combined Risk Factor:</strong> {(synopticEffect.riskMultiplier * 100).toFixed(0)}% of baseline
+                  {synopticEffect.timingAdjustment !== 0 && (
                     <>
                       <br />
-                      <strong>Timing:</strong> {getSynopticPatternEffect().timingAdjustment > 0 ? 'Delayed' : 'Earlier'} by {Math.abs(getSynopticPatternEffect().timingAdjustment)} hours
+                      <strong>Combined Timing:</strong> {synopticEffect.timingAdjustment > 0 ? 'Delayed' : 'Earlier'} by {Math.abs(synopticEffect.timingAdjustment).toFixed(1)} hours
                     </>
                   )}
                 </p>
