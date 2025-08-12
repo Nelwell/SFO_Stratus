@@ -229,7 +229,7 @@ function App() {
     };
   };
 
-  const getFinalPrediction = (synopticEffect: SynopticPattern) => {
+  const getFinalPrediction = () => {
     const si = calculateSI();
     const on = calculateON();
     const off = calculateOFF();
@@ -344,8 +344,8 @@ function App() {
     }
 
     // Synoptic pattern effects
-    probability *= synopticEffect.riskMultiplier;
-    startTime += synopticEffect.timingAdjustment;
+    probability *= currentSynopticEffect.riskMultiplier;
+    startTime += currentSynopticEffect.timingAdjustment;
     
     if (synopticPatterns.cutoff_low || synopticPatterns.trough) {
       confidence = 'High';
@@ -378,11 +378,11 @@ function App() {
       confidence,
       warnings,
       reasoning: `SI=${si.toFixed(1)}, ON=${on.toFixed(1)}mb, OFF=${off.toFixed(1)}mb, BI=${baseInversion}ft`
-        + ` | Pattern: ${synopticEffect.type}`
+        + ` | Pattern: ${currentSynopticEffect.type}`
     };
   };
 
-  const prediction = getFinalPrediction(currentSynopticEffect);
+  const prediction = getFinalPrediction();
   const si = calculateSI();
 
   return (
