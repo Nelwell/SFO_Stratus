@@ -256,6 +256,7 @@ function App() {
     const synopticEffects = getSynopticPatternEffects();
     
     let startTime = siTiming.start;
+    let endTime = siTiming.end;
     let probability = 100 - siTiming.noCigProb;
     let confidence = 'Medium';
     let warnings = [];
@@ -366,6 +367,7 @@ function App() {
     // Apply synoptic pattern effects
     probability *= synopticEffects.probabilityMultiplier;
     startTime += synopticEffects.timingAdjustment;
+    endTime += synopticEffects.timingAdjustment * 0.5; // End time less affected by synoptic patterns
     startTime = Math.max(1, startTime); // Ensure minimum start time of 1Z
 
     // Wind effects
@@ -381,15 +383,33 @@ function App() {
     
     // Round times to nearest half hour
     const roundedStartTime = roundToNearestHalfHour(startTime);
-    const roundedEndTime = roundToNearestHalfHour(siTiming.end);
+    const roundedEndTime = roundToNearestHalfHour(endTime);
+    
+    // Calculate time windows (±1 hour for onset, ±0.5 hour for end)
+    const onsetWindow = {
+      earliest: Math.max(1, roundedStartTime - 1),
+      latest: roundedStartTime + 1,
+      mostProbable: roundedStartTime
+    };
+    
+    const endWindow = {
+      earliest: roundedEndTime - 0.5,
+      latest: roundedEndTime + 0.5,
+      mostProbable: roundedEndTime
+    };
+    
+    // Calculate burn-off time from sunrise
+    const burnOffHours = calculateBurnOffTime(burnOff.base, burnOff.top);
     
     return {
-      startTime: roundedStartTime > 24 ? 'No Event' : formatTime(roundedStartTime),
-      endTime: formatTime(roundedEndTime),
+      onsetWindow,
+      endWindow,
+      burnOffHours,
       probability: Math.round(probability),
       confidence,
       warnings,
-      reasoning: `SI=${si.toFixed(1)}, ON=${on.toFixed(1)}mb, OFF=${off.toFixed(1)}mb, BI=${baseInversion}ft`
+      reasoning: `SI=${si.toFixed(1)}, ON=${on.toFixed(1)}mb, OFF=${off.toFixed(1)}mb, BI=${baseInversion}ft`,
+      synopticEffects: synopticEffects.effects
     };
   };
 
@@ -468,6 +488,16 @@ function App() {
                     }`}
                     style={{ width: `${Math.max(0, Math.min(100, ((30 - si) / 20) * 100))}%` }}
                   ></div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600 dark:text-gray-400">SI Onset:</span>
+                    <span className="font-medium text-gray-800 dark:text-gray-200">{formatTime(getSITiming(si).start)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600 dark:text-gray-400">SI End:</span>
+                    <span className="font-medium text-gray-800 dark:text-gray-200">{formatTime(getSITiming(si).end)}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -874,23 +904,52 @@ function App() {
               </div>
 
               {/* Timing Results */}
-              <div className="space-y-4 mb-6">
-                <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4 transition-colors duration-300">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-medium text-blue-800 dark:text-blue-300">Onset Time</span>
-                    <span className="text-xl font-bold text-blue-600 dark:text-blue-400">{prediction.startTime}</span>
+              <div className="space-y-3 mb-6">
+                {prediction.onsetWindow.mostProbable <= 24 ? (
+                  <>
+                    <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4 transition-colors duration-300">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-medium text-blue-800 dark:text-blue-300">Onset Window</span>
+                        <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                          {formatTime(prediction.onsetWindow.earliest)}-{formatTime(prediction.onsetWindow.latest)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-blue-700 dark:text-blue-400">Most Probable</span>
+                        <span className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                          {formatTime(prediction.onsetWindow.mostProbable)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="bg-green-50 dark:bg-green-900/30 rounded-lg p-4 transition-colors duration-300">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-medium text-green-800 dark:text-green-300">End Window</span>
+                        <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                          {formatTime(prediction.endWindow.earliest)}-{formatTime(prediction.endWindow.latest)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-green-700 dark:text-green-400">Most Probable</span>
+                        <span className="text-xl font-bold text-green-600 dark:text-green-400">
+                          {formatTime(prediction.endWindow.mostProbable)}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="bg-red-50 dark:bg-red-900/30 rounded-lg p-4 transition-colors duration-300">
+                    <div className="text-center">
+                      <span className="text-xl font-bold text-red-600 dark:text-red-400">No Stratus Event Expected</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium text-blue-800 dark:text-blue-300">SI End Time</span>
-                    <span className="text-xl font-bold text-blue-600 dark:text-blue-400">{prediction.endTime}</span>
-                  </div>
-                </div>
+                )}
 
                 <div className="bg-orange-50 dark:bg-orange-900/30 rounded-lg p-4 transition-colors duration-300">
                   <div className="flex justify-between items-center">
                     <span className="font-medium text-orange-800 dark:text-orange-300">Burn-Off (SCT)</span>
                     <span className="text-lg font-bold text-orange-600 dark:text-orange-400">
-                      +{calculateBurnOffTime(burnOff.base, burnOff.top)}hrs sunrise
+                      +{prediction.burnOffHours}hrs sunrise
                     </span>
                   </div>
                   <div className="flex justify-between items-center mt-2 pt-2 border-t border-orange-200 dark:border-orange-700">
@@ -908,6 +967,14 @@ function App() {
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{prediction.reasoning}</p>
                 {hasTrigger() && (
                   <p className="text-sm text-yellow-700 dark:text-yellow-400 font-medium">⚡ Synoptic trigger detected - early onset more likely</p>
+                )}
+                {prediction.synopticEffects && prediction.synopticEffects.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-300 dark:border-gray-600">
+                    <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Synoptic Pattern Effects:</p>
+                    {prediction.synopticEffects.map((effect, idx) => (
+                      <p key={idx} className="text-xs text-purple-600 dark:text-purple-400">• {effect}</p>
+                    ))}
+                  </div>
                 )}
                 {prediction.synopticEffects && prediction.synopticEffects.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-gray-300 dark:border-gray-600">
