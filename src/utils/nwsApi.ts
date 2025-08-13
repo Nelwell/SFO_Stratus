@@ -79,14 +79,12 @@ const getCurrentDewpoint = (observation: MetarObservation): number | null => {
 };
 
 // Check if timestamp is within 20Z-00Z window (accounting for METAR timing ~5min before hour)
-const isIn20to00ZWindow = (timestamp: string): boolean => {
+const isIn20to23ZWindow = (timestamp: string): boolean => {
   const obsTime = new Date(timestamp);
   const utcHour = obsTime.getUTCHours();
-  const utcMinute = obsTime.getUTCMinutes();
   
-  // 1955Z-2359Z window
-  return (utcHour === 19 && utcMinute >= 55) ||
-         (utcHour >= 20 && utcHour <= 23);
+  // Just look for hours 20, 21, 22, 23Z
+  return utcHour >= 20 && utcHour <= 23;
 };
 
 // Get the date string for the most recent 20Z period for display
@@ -137,10 +135,10 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
       throw new Error('No observations available');
     }
     
-    // Filter observations for 20Z-00Z window
-    const relevantObs = observations.filter(obs => isIn20to00ZWindow(obs.timestamp));
+    // Filter observations for 20Z-23Z window
+    const relevantObs = observations.filter(obs => isIn20to23ZWindow(obs.timestamp));
     
-    console.log(`Found ${relevantObs.length} observations in 20Z-00Z window`);
+    console.log(`Found ${relevantObs.length} observations in 20Z-23Z window`);
     
     let maxTemp: number | null = null;
     let maxDewpoint: number | null = null;
@@ -183,7 +181,7 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
     return {
       maxTemp,
       maxDewpoint,
-      dataSource: `NWS METAR (KSFO) ${getMostRecent20ZDateString()}`,
+      dataSource: `NWS METAR (KSFO) 20Z-23Z window`,
       timestamp: latestTimestamp || new Date().toISOString()
     };
     
