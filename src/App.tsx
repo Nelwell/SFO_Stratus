@@ -1,432 +1,590 @@
 import React, { useState, useEffect } from 'react';
-import { Cloud, Sun, CloudRain, Thermometer, Wind, Gauge, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye, Moon, Globe, RefreshCw, Wifi } from 'lucide-react';
 import { fetchKSFOTemperatureData, fetchAllStationPressureData, formatTimestamp, type TemperatureData, type PressureData } from './utils/nwsApi';
 
+// SFO coordinates for sunrise calculation
+const SFO_LAT = 37.6213;
+const SFO_LON = -122.3790;
+
+interface PressureData {
+  sfo: number;
+  smf: number;
+  acv: number;
+  trend24h: number;
+}
+
+interface SynopticTrigger {
+  deepeningTrough: boolean;
+  shortwaveTrough: boolean;
+  longWaveTrough: boolean;
+  shallowFront: boolean;
+}
+
+interface SynopticPattern {
+  thermalLow: boolean;
+  surfaceHigh: boolean;
+  upperRidge: boolean;
+  upperTrough: boolean;
+  cutoffLow: boolean;
+}
+
+interface BurnOffData {
+  base: number;
+  top: number;
+}
+
+interface WindData {
+  direction: number;
+  speed: number;
+}
 function App() {
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [maxTemp, setMaxTemp] = useState<string>('');
-  const [maxDewpoint, setMaxDewpoint] = useState<string>('');
+  const [maxTemp, setMaxTemp] = useState<number>(75);
+  const [maxDewpoint, setMaxDewpoint] = useState<number>(58);
+  const [onPressure, setOnPressure] = useState<PressureData>({
+    sfo: 1015.0,
+    smf: 1011.0,
+    acv: 0,
+    trend24h: 0.5
+  });
+  const [offPressure, setOffPressure] = useState<PressureData>({
+    sfo: 1019.0,
+    smf: 0,
+    acv: 1013.0,
+    trend24h: -0.2
+  });
+  const [baseInversion, setBaseInversion] = useState<number>(1400);
+  const [wind2k, setWind2k] = useState<WindData>({ direction: 270, speed: 15 });
+  const [triggers, setTriggers] = useState<SynopticTrigger>({
+    deepeningTrough: false,
+    shortwaveTrough: false,
+    longWaveTrough: false,
+    shallowFront: false
+  });
+  const [selectedTrigger, setSelectedTrigger] = useState<string>('');
+  const [synopticPatterns, setSynopticPatterns] = useState<SynopticPattern>({
+    thermalLow: false,
+    surfaceHigh: false,
+    upperRidge: false,
+    upperTrough: false,
+    cutoffLow: false
+  });
+  const [burnOff, setBurnOff] = useState<BurnOffData>({
+    base: 800,
+    top: 1700
+  });
+  const [month, setMonth] = useState<string>('July');
+  const [afternoonDewpoint, setAfternoonDewpoint] = useState<number>(55);
+  const [darkMode, setDarkMode] = useState<boolean>(false);
+  const [temperatureData, setTemperatureData] = useState<TemperatureData | null>(null);
+  const [isLoadingTemps, setIsLoadingTemps] = useState<boolean>(false);
+  const [tempDataError, setTempDataError] = useState<string | null>(null);
   const [acvPressure, setAcvPressure] = useState<string>('');
-  const [sfoPressure, setSfoPressure] = useState<string>('');
+  const [sfoPressureGradient, setSfoPressureGradient] = useState<string>('');
   const [smfPressure, setSmfPressure] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [pressureStatus, setPressureStatus] = useState<string>('');
   const [pressureLoading, setPressureLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [pressureData, setPressureData] = useState<{acv: PressureData; sfo: PressureData; smf: PressureData} | null>(null);
+  const [isLoadingPressure, setIsLoadingPressure] = useState(false);
+  const [sfoPressure, setSfoPressure] = useState<number | null>(null);
   const [pressureError, setPressureError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const [pressureLastUpdated, setPressureLastUpdated] = useState<string | null>(null);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [lastPressureUpdate, setLastPressureUpdate] = useState<string>('');
 
-  // Monitor online status
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+  // Calculate sunrise time for SFO
+  const getSunriseTime = () => {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth() + 1;
+    const day = now.getUTCDate();
+    
+    // Julian day calculation
+    const a = Math.floor((14 - month) / 12);
+    const y = year - a;
+    const m = month + 12 * a - 3;
+    const jd = day + Math.floor((153 * m + 2) / 5) + 365 * y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) + 1721119;
+    
+    // Solar calculations
+    const n = jd - 2451545.0;
+    const L = (280.460 + 0.9856474 * n) % 360;
+    const g = ((357.528 + 0.9856003 * n) % 360) * Math.PI / 180;
+    const lambda = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * Math.PI / 180;
+    
+    const alpha = Math.atan2(Math.cos(23.439 * Math.PI / 180) * Math.sin(lambda), Math.cos(lambda));
+    const delta = Math.asin(Math.sin(23.439 * Math.PI / 180) * Math.sin(lambda));
+    
+    const latRad = SFO_LAT * Math.PI / 180;
+    const hourAngle = Math.acos(-Math.tan(latRad) * Math.tan(delta));
+    
+    // Time calculations
+    const eqTime = 4 * (L * Math.PI / 180 - 0.0057183 - alpha + SFO_LON * Math.PI / 180);
+    const sunriseMinutes = 720 - 4 * SFO_LON - eqTime - 4 * hourAngle * 180 / Math.PI;
+    
+    const sunriseHours = Math.floor(sunriseMinutes / 60) % 24;
+    const sunriseMin = Math.floor(sunriseMinutes % 60);
+    
+    return `${sunriseHours.toString().padStart(2, '0')}${sunriseMin.toString().padStart(2, '0')}Z`;
+  };
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  // Auto-fetch temperature data on component mount
-  useEffect(() => {
-    fetchTemperatureData();
-  }, []);
-
-  const fetchTemperatureData = async () => {
-    if (!isOnline) {
-      setError('No internet connection available');
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
+  // Fetch temperature data from NWS API
+  const loadTemperatureData = async () => {
+    setIsLoadingTemps(true);
+    setTempDataError(null);
     
     try {
-      const data: TemperatureData = await fetchKSFOTemperatureData();
+      const data = await fetchKSFOTemperatureData();
+      setTemperatureData(data);
       
+      // Auto-populate fields if data is available
       if (data.maxTemp !== null) {
-        setMaxTemp(data.maxTemp.toString());
+        setMaxTemp(data.maxTemp);
       }
       if (data.maxDewpoint !== null) {
-        setMaxDewpoint(data.maxDewpoint.toString());
+        setMaxDewpoint(data.maxDewpoint);
       }
-      
-      setLastUpdated(new Date().toLocaleString());
-    } catch (err) {
-      console.error('Temperature fetch error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch temperature data');
+    } catch (error) {
+      setTempDataError(error instanceof Error ? error.message : 'Failed to fetch temperature data');
+      console.error('Temperature data fetch error:', error);
     } finally {
-      setIsLoading(false);
+      setIsLoadingTemps(false);
     }
   };
 
+  // Fetch pressure data
   const fetchPressureData = async () => {
-    if (!isOnline) {
-      setPressureError('No internet connection available');
-      return;
-    }
-
-    setPressureLoading(true);
+    setIsLoadingPressure(true);
     setPressureError(null);
     
     try {
       const data = await fetchAllStationPressureData();
+      setPressureData(data);
       
-      if (data.acv.pressure !== null) {
-        setAcvPressure(data.acv.pressure.toString());
-      }
-      if (data.sfo.pressure !== null) {
-        setSfoPressure(data.sfo.pressure.toString());
-      }
-      if (data.smf.pressure !== null) {
-        setSmfPressure(data.smf.pressure.toString());
-      }
+      // Auto-fill the pressure fields
+      setAcvPressure(data.acv.pressure?.toString() || '');
+      setSfoPressure(data.sfo.pressure?.toString() || '');
+      setSmfPressure(data.smf.pressure?.toString() || '');
       
-      setPressureLastUpdated(new Date().toLocaleString());
-    } catch (err) {
-      console.error('Pressure fetch error:', err);
-      setPressureError(err instanceof Error ? err.message : 'Failed to fetch pressure data');
+      setLastPressureUpdate(new Date().toLocaleTimeString());
+    } catch (error) {
+      setPressureError(error instanceof Error ? error.message : 'Failed to fetch pressure data');
+      console.error('Pressure fetch error:', error);
     } finally {
-      setPressureLoading(false);
+      setIsLoadingPressure(false);
     }
   };
 
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-  };
+  // Auto-fetch pressure data on component mount
+  useEffect(() => {
+    fetchPressureData();
+  }, []);
 
-  // Calculate Showalter Index
-  const calculateSI = () => {
-    const temp = parseFloat(maxTemp);
-    const dewpoint = parseFloat(maxDewpoint);
-    
-    if (isNaN(temp) || isNaN(dewpoint)) return null;
-    
-    return Math.round((temp - dewpoint) * 10) / 10;
-  };
+  // Load temperature data on component mount
+  useEffect(() => {
+    loadTemperatureData();
+  }, []);
 
-  // Calculate pressure gradients
-  const calculateOffshoreGradient = () => {
-    const acv = parseFloat(acvPressure);
-    const sfo = parseFloat(sfoPressure);
-    
-    if (isNaN(acv) || isNaN(sfo)) return null;
-    
-    return Math.round((acv - sfo) * 10) / 10;
-  };
-
-  const calculateOnshoreGradient = () => {
-    const sfo = parseFloat(sfoPressure);
-    const smf = parseFloat(smfPressure);
-    
-    if (isNaN(sfo) || isNaN(smf)) return null;
-    
-    return Math.round((sfo - smf) * 10) / 10;
-  };
-
-  const si = calculateSI();
-  const offshoreGradient = calculateOffshoreGradient();
-  const onshoreGradient = calculateOnshoreGradient();
-
-  // Determine stratus probability based on SI and gradients
-  const getStratusProbability = () => {
-    if (si === null) return null;
-    
-    let probability = 50; // Base probability
-    
-    // SI contribution (primary factor)
-    if (si < 13) {
-      probability = 90;
-    } else if (si > 22) {
-      probability = 20;
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
     } else {
-      // Linear interpolation between 13 and 22
-      probability = 90 - ((si - 13) / (22 - 13)) * 70;
+      document.documentElement.classList.remove('dark');
     }
+  }, [darkMode]);
+
+  const calculateSI = () => maxTemp - maxDewpoint;
+  const calculateON = () => onPressure.sfo - onPressure.smf;
+  const calculateOFF = () => offPressure.acv - offPressure.sfo;
+
+  const getSITiming = (si: number) => {
+    const timingTable = [
+      { si: 9, start: 1, end: 21, noCigProb: 5.9 },
+      { si: 10, start: 1, end: 21, noCigProb: 11.1 },
+      { si: 11, start: 3, end: 20, noCigProb: 10.7 },
+      { si: 12, start: 3, end: 19, noCigProb: 11.4 },
+      { si: 13, start: 6, end: 18, noCigProb: 20.6 },
+      { si: 14, start: 7, end: 17, noCigProb: 21.5 },
+      { si: 15, start: 8, end: 17, noCigProb: 24.4 },
+      { si: 16, start: 9, end: 17, noCigProb: 20.8 },
+      { si: 17, start: 9, end: 17, noCigProb: 20.0 },
+      { si: 18, start: 9, end: 17, noCigProb: 21.6 },
+      { si: 19, start: 10, end: 17, noCigProb: 23.3 },
+      { si: 20, start: 10, end: 17, noCigProb: 44.4 },
+      { si: 21, start: 10, end: 17, noCigProb: 60.0 },
+      { si: 22, start: 10, end: 17, noCigProb: 75.0 },
+      { si: 23, start: 11, end: 17, noCigProb: 80.0 },
+      { si: 24, start: 13, end: 17, noCigProb: 70.0 },
+      { si: 25, start: 13, end: 17, noCigProb: 83.3 }
+    ];
+
+    if (si < 9) return timingTable[0];
+    if (si > 25) return timingTable[timingTable.length - 1];
     
-    // Pressure gradient adjustments (secondary factors)
-    if (offshoreGradient !== null) {
-      if (offshoreGradient < -2) probability += 10; // Strong offshore gradient increases probability
-      if (offshoreGradient > 2) probability -= 10; // Onshore gradient decreases probability
-    }
+    const exact = timingTable.find(t => t.si === Math.round(si));
+    if (exact) return exact;
     
-    if (onshoreGradient !== null) {
-      if (onshoreGradient > 2) probability += 5; // Onshore gradient increases probability slightly
-      if (onshoreGradient < -2) probability -= 5; // Offshore gradient decreases probability slightly
-    }
+    const lower = timingTable.filter(t => t.si <= si).pop();
+    const upper = timingTable.find(t => t.si > si);
     
-    return Math.max(0, Math.min(100, Math.round(probability)));
+    if (!lower) return timingTable[0];
+    if (!upper) return timingTable[timingTable.length - 1];
+    
+    return lower;
   };
 
-  const stratusProbability = getStratusProbability();
+  const roundToNearestHalfHour = (time: number) => {
+    return Math.round(time * 2) / 2;
+  };
+
+  const formatTime = (time: number) => {
+    const hours = Math.floor(time);
+    const minutes = (time - hours) * 60;
+    return `${hours.toString().padStart(2, '0')}${minutes.toString().padStart(2, '0')}Z`;
+  };
+
+  const getMonthlyThresholds = () => {
+    const thresholds = {
+      'May': { onMin: 3.5, offMax: -5.0 },
+      'June': { onMin: 3.5, offMax: -5.5 },
+      'July': { onMin: 3.5, offMax: -6.0 },
+      'August': { onMin: 3.0, offMax: -6.0 },
+      'September': { onMin: 2.5, offMax: -6.0 }
+    };
+    return thresholds[month as keyof typeof thresholds] || thresholds['July'];
+  };
+
+  const calculateBurnOffTime = (base: number, top: number) => {
+    const thickness = top - base;
+    const burnRate = 200; // ft/hr
+    const hoursToScatter = thickness / burnRate;
+    const totalHours = top / burnRate;
+    return Math.round(hoursToScatter * 10) / 10;
+  };
+
+  const hasTrigger = () => {
+    return selectedTrigger !== '';
+  };
+
+  const getSynopticPatternEffects = () => {
+    let probabilityMultiplier = 1.0;
+    let timingAdjustment = 0;
+    let effects = [];
+
+    // Surface patterns
+    if (synopticPatterns.thermalLow) {
+      probabilityMultiplier *= 1.25;
+      timingAdjustment -= 1;
+      effects.push('Thermal low enhances onshore flow');
+    }
+
+    if (synopticPatterns.surfaceHigh) {
+      if (synopticPatterns.thermalLow) {
+        // Optimal pattern: surface high offshore + thermal low inland
+        probabilityMultiplier *= 1.15;
+        timingAdjustment -= 0.5;
+        effects.push('Surface high offshore strengthens pressure gradient');
+      } else {
+        // Surface high without thermal low can suppress marine layer
+        probabilityMultiplier *= 0.85;
+        effects.push('Surface high may suppress marine layer without thermal low');
+      }
+    }
+
+    // Upper-level patterns
+    if (synopticPatterns.upperRidge) {
+      probabilityMultiplier *= 1.2;
+      effects.push('Upper ridge enhances subsidence and inversion strength');
+    }
+
+    if (synopticPatterns.upperTrough) {
+      probabilityMultiplier *= 1.3;
+      timingAdjustment -= 1;
+      effects.push('Upper trough thickens marine layer and raises base inversion');
+    }
+
+    if (synopticPatterns.cutoffLow) {
+      probabilityMultiplier *= 1.2;
+      timingAdjustment -= 0.5;
+      effects.push('Cutoff low enhances marine layer thickness');
+    }
+
+    // Interaction effects
+    if (synopticPatterns.upperRidge && synopticPatterns.thermalLow) {
+      probabilityMultiplier *= 1.1; // Additional boost for optimal combination
+      effects.push('Upper ridge + thermal low: optimal marine layer pattern');
+    }
+
+    if (synopticPatterns.upperTrough && synopticPatterns.thermalLow) {
+      probabilityMultiplier *= 1.1; // Additional boost for trough + thermal low
+      effects.push('Upper trough + thermal low: enhanced marine layer penetration');
+    }
+    return { probabilityMultiplier, timingAdjustment, effects };
+  };
+
+  const getFinalPrediction = () => {
+    const si = calculateSI();
+    const on = calculateON();
+    const off = calculateOFF();
+    const siTiming = getSITiming(si);
+    const monthlyThresh = getMonthlyThresholds();
+    const synopticEffects = getSynopticPatternEffects();
+    
+    let startTime = siTiming.start;
+    let endTime = siTiming.end;
+    let probability = 100 - siTiming.noCigProb;
+    let confidence = 'Medium';
+    let warnings = [];
+
+    // Base conditions that prevent formation
+    if (baseInversion < 500) {
+      return {
+        startTime: 'No Event',
+        endTime: 'N/A',
+        probability: 5,
+        confidence: 'High',
+        warnings: ['Base inversion below 500ft prevents stratus formation'],
+        reasoning: `SI=${si.toFixed(1)}, ON=${on.toFixed(1)}mb, OFF=${off.toFixed(1)}mb, BI=${baseInversion}ft`,
+        synopticEffects: synopticEffects.effects
+      };
+    }
+
+    // Smooth dewpoint reduction (starts reducing at 45°F, severe reduction below 42°F)
+    if (afternoonDewpoint < 45) {
+      let dewpointFactor = 1.0;
+      if (afternoonDewpoint >= 42) {
+        // Gradual reduction from 45°F to 42°F
+        dewpointFactor = 0.3 + (0.7 * (afternoonDewpoint - 42) / 3);
+      } else {
+        // Severe reduction below 42°F
+        dewpointFactor = Math.max(0.05, 0.3 * Math.pow((afternoonDewpoint - 35) / 7, 2));
+      }
+      probability *= dewpointFactor;
+      
+      if (afternoonDewpoint < 42) {
+        warnings.push(`Minimum afternoon dewpoint (${afternoonDewpoint}°F) well below 42°F threshold - stratus very improbable`);
+        confidence = 'High';
+      } else {
+        warnings.push(`Minimum afternoon dewpoint (${afternoonDewpoint}°F) approaching 42°F threshold - reduced probability`);
+      }
+    }
+
+    // Smooth monthly threshold checks for onshore gradient
+    if (on < monthlyThresh.onMin + 0.5) {
+      let onFactor = 1.0;
+      if (on >= monthlyThresh.onMin) {
+        // Gradual reduction in the 0.5mb buffer zone
+        onFactor = 0.3 + (0.7 * (on - monthlyThresh.onMin) / 0.5);
+      } else {
+        // More severe reduction below threshold
+        onFactor = Math.max(0.1, 0.3 * Math.pow(Math.max(0, on) / monthlyThresh.onMin, 1.5));
+      }
+      probability *= onFactor;
+      warnings.push(`Onshore gradient (${on.toFixed(1)}mb) ${on < monthlyThresh.onMin ? 'below' : 'near'} ${monthlyThresh.onMin}mb ${month} threshold`);
+    }
+
+    // Smooth monthly threshold checks for offshore gradient (note: offMax is negative)
+    if (off > monthlyThresh.offMax - 0.5) {
+      let offFactor = 1.0;
+      if (off <= monthlyThresh.offMax) {
+        // Gradual reduction in the 0.5mb buffer zone above threshold
+        offFactor = 0.2 + (0.8 * (monthlyThresh.offMax - off) / 0.5);
+      } else {
+        // More severe reduction above threshold (less negative = worse)
+        offFactor = Math.max(0.05, 0.2 * Math.pow(Math.abs(monthlyThresh.offMax) / Math.max(0.1, Math.abs(off)), 1.5));
+      }
+      probability *= offFactor;
+      warnings.push(`Offshore gradient (${off.toFixed(1)}mb) ${off > monthlyThresh.offMax ? 'above' : 'near'} ${monthlyThresh.offMax}mb ${month} threshold`);
+    }
+
+    // Pressure gradient adjustments
+    if (on >= 3.6) {
+      probability *= 1.2;
+      if (onPressure.trend24h > 0) {
+        startTime = Math.max(1, startTime - onPressure.trend24h);
+      }
+    }
+
+    if (off >= 3.4) {
+      probability *= 0.7;
+      if (offPressure.trend24h > 0) {
+        startTime += offPressure.trend24h;
+      }
+    }
+
+    // Smooth base inversion effects
+    if (baseInversion < 1200) {
+      let inversionFactor = 1.0;
+      let delayHours = 0;
+      
+      if (baseInversion >= 1000) {
+        // Gradual effects from 1200ft to 1000ft
+        inversionFactor = 0.8 + (0.2 * (baseInversion - 1000) / 200);
+        delayHours = 2 * (1200 - baseInversion) / 200;
+      } else {
+        // More significant effects below 1000ft
+        inversionFactor = Math.max(0.4, 0.8 * Math.pow(baseInversion / 1000, 0.5));
+        delayHours = 2 + 2 * (1000 - baseInversion) / 500;
+      }
+      
+      probability *= inversionFactor;
+      startTime += delayHours;
+      warnings.push(`Low inversion height (${baseInversion}ft) ${baseInversion < 1000 ? 'significantly delays' : 'delays'} penetration through gaps`);
+    }
+
+    // Synoptic trigger effects
+    if (hasTrigger()) {
+      startTime = Math.max(1, Math.min(startTime, 3));
+      probability *= 1.3;
+      confidence = 'High';
+    }
+
+    // Apply synoptic pattern effects
+    probability *= synopticEffects.probabilityMultiplier;
+    startTime += synopticEffects.timingAdjustment;
+    endTime += synopticEffects.timingAdjustment * 0.5; // End time less affected by synoptic patterns
+    startTime = Math.max(1, startTime); // Ensure minimum start time of 1Z
+
+    // Wind effects
+    if ((wind2k.direction >= 240 && wind2k.direction <= 300) && wind2k.speed > 10) {
+      startTime = Math.max(1, startTime - 1);
+      probability *= 1.1;
+    }
+
+    // SI confidence adjustments
+    if (si < 10 || si > 22) confidence = 'High';
+    
+    probability = Math.min(95, Math.max(5, probability));
+    
+    // Round times to nearest half hour
+    const roundedStartTime = roundToNearestHalfHour(startTime);
+    const roundedEndTime = roundToNearestHalfHour(endTime);
+    
+    // Calculate time windows (±1 hour for onset, ±0.5 hour for end)
+    const onsetWindow = {
+      earliest: Math.max(1, roundedStartTime - 1),
+      latest: roundedStartTime + 1,
+      mostProbable: roundedStartTime
+    };
+    
+    const endWindow = {
+      earliest: roundedEndTime - 0.5,
+      latest: roundedEndTime + 0.5,
+      mostProbable: roundedEndTime
+    };
+    
+    // Calculate burn-off time from sunrise
+    const burnOffHours = calculateBurnOffTime(burnOff.base, burnOff.top);
+    
+    return {
+      onsetWindow,
+      endWindow,
+      burnOffHours,
+      probability: Math.round(probability),
+      confidence,
+      warnings,
+      reasoning: `SI=${si.toFixed(1)}, ON=${on.toFixed(1)}mb, OFF=${off.toFixed(1)}mb, BI=${baseInversion}ft`,
+      synopticEffects: synopticEffects.effects
+    };
+  };
+
+  const prediction = getFinalPrediction();
+  const si = calculateSI();
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${
-      isDarkMode ? 'dark bg-gray-900' : 'bg-gray-50'
-    }`}>
-      <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 dark:from-gray-900 dark:via-gray-800 dark:to-slate-900 transition-colors duration-300">
+      <div className="container mx-auto px-4 py-8 max-w-7xl">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white transition-colors duration-300">
-              SFO Stratus Prediction Tool
-            </h1>
-            <p className="text-gray-600 dark:text-gray-300 mt-2 transition-colors duration-300">
-              Marine layer forecasting for San Francisco International Airport
-            </p>
-          </div>
-          <div className="flex items-center space-x-4">
-            <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${
-              isOnline 
-                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
-                : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-            } transition-colors duration-300`}>
-              {isOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
-              <span>{isOnline ? 'Online' : 'Offline'}</span>
-            </div>
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <Cloud className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+            <h1 className="text-3xl font-bold text-gray-800 dark:text-white">SFO Stratus Prediction Tool</h1>
             <button
-              onClick={toggleDarkMode}
-              className="p-2 rounded-lg bg-white dark:bg-gray-800 shadow-md hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700"
+              onClick={() => setDarkMode(!darkMode)}
+              className="ml-4 p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200"
               aria-label="Toggle dark mode"
             >
-              {isDarkMode ? (
-                <Sun className="w-5 h-5 text-yellow-500" />
+              {darkMode ? (
+                <Sun className="h-5 w-5 text-yellow-500" />
               ) : (
-                <Cloud className="w-5 h-5 text-gray-600" />
+                <Moon className="h-5 w-5 text-gray-600" />
               )}
             </button>
           </div>
+          <p className="text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+            Advanced stratus onset and burn-off prediction tool based on the Cohen-Lau methodology
+          </p>
         </div>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Temperature Data Card */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 transition-colors duration-300">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center space-x-3">
-                <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg transition-colors duration-300">
-                  <Thermometer className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Input Panels */}
+          <div className="lg:col-span-2 space-y-6">
+            
+            {/* Stratus Index */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
+              <div className="flex items-center gap-2 mb-4">
+                <Thermometer className="h-5 w-5 text-red-500" />
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Stratus Index (SI)</h2>
+                <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 ml-auto">{si.toFixed(1)}</span>
+                <button
+                  onClick={loadTemperatureData}
+                  disabled={isLoadingTemps}
+                  className="ml-2 p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors duration-200 disabled:opacity-50"
+                  title="Refresh temperature data from NWS"
+                >
+                  <RefreshCw className={`h-4 w-4 text-blue-600 dark:text-blue-400 ${isLoadingTemps ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+              
+              {/* Temperature data status */}
+              {temperatureData && (
+                <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/30 rounded-lg transition-colors duration-300">
+                  <div className="flex items-center gap-2 text-sm text-green-800 dark:text-green-300">
+                    <Wifi className="h-4 w-4" />
+                    <span className="font-medium">Auto-populated from {temperatureData.dataSource}</span>
+                  </div>
+                  <div className="text-xs text-green-700 dark:text-green-400 mt-1">
+                    Last updated: {formatTimestamp(temperatureData.timestamp)}
+                  </div>
+                  {temperatureData.maxTemp !== null && (
+                    <div className="text-xs text-green-700 dark:text-green-400">
+                      Max Temp: {temperatureData.maxTemp}°F | Max Dewpoint: {temperatureData.maxDewpoint || 'N/A'}°F
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {tempDataError && (
+                <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg transition-colors duration-300">
+                  <div className="flex items-center gap-2 text-sm text-yellow-800 dark:text-yellow-300">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span className="font-medium">Unable to fetch live data</span>
+                  </div>
+                  <div className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
+                    {tempDataError} - Using manual input
+                  </div>
+                </div>
+              )}
+              
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Max Temperature (20-24Z) °F {temperatureData?.maxTemp && <span className="text-green-600 text-xs">(Auto)</span>}
+                  </label>
+                  <input
+                    type="number"
+                    value={maxTemp}
+                    onChange={(e) => setMaxTemp(parseFloat(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                  />
                 </div>
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white transition-colors duration-300">
-                    Temperature Data
-                  </h2>
-                  <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400 transition-colors duration-300">
-                    <Wifi className="w-3 h-3" />
-                    <span>Auto-populated from NWS METAR (KSFO) 20Z-24Z window</span>
-                  </div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Max Dewpoint (20-24Z) °F {temperatureData?.maxDewpoint && <span className="text-green-600 text-xs">(Auto)</span>}
+                  </label>
+                  <input
+                    type="number"
+                    value={maxDewpoint}
+                    onChange={(e) => setMaxDewpoint(parseFloat(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                  />
                 </div>
-              </div>
-              <button
-                onClick={fetchTemperatureData}
-                disabled={isLoading || !isOnline}
-                className="p-2 bg-blue-50 dark:bg-blue-900 hover:bg-blue-100 dark:hover:bg-blue-800 rounded-lg transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                aria-label="Refresh temperature data"
-              >
-                <RefreshCw className={`w-5 h-5 text-blue-600 dark:text-blue-400 ${isLoading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 transition-colors duration-300">
-                  Maximum Temperature (°F)
-                </label>
-                <input
-                  type="number"
-                  value={maxTemp}
-                  onChange={(e) => setMaxTemp(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                  placeholder="Enter max temperature"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 transition-colors duration-300">
-                  Maximum Dewpoint (°F)
-                </label>
-                <input
-                  type="number"
-                  value={maxDewpoint}
-                  onChange={(e) => setMaxDewpoint(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                  placeholder="Enter max dewpoint"
-                />
-              </div>
-
-              {error && (
-                <div className="p-3 bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700 rounded-lg transition-colors duration-300">
-                  <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
-                </div>
-              )}
-
-              {lastUpdated && (
-                <div className="text-xs text-gray-500 dark:text-gray-400 transition-colors duration-300">
-                  Last updated: {lastUpdated}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Pressure Gradients Card */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 transition-colors duration-300">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center space-x-3">
-                <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-lg transition-colors duration-300">
-                  <Gauge className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white transition-colors duration-300">
-                    Pressure Gradients
-                  </h2>
-                </div>
-              </div>
-              <button
-                onClick={fetchPressureData}
-                disabled={pressureLoading || !isOnline}
-                className="px-4 py-2 bg-purple-50 dark:bg-purple-900 hover:bg-purple-100 dark:hover:bg-purple-800 rounded-lg transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium text-purple-600 dark:text-purple-400"
-              >
-                {pressureLoading ? (
-                  <div className="flex items-center space-x-2">
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Loading...</span>
-                  </div>
-                ) : (
-                  'Auto-fill'
-                )}
-              </button>
-            </div>
-
-            <div className="space-y-6">
-              {/* Gradient Results */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg transition-colors duration-300">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 transition-colors duration-300">Offshore (ACV - SFO)</div>
-                  <div className={`text-2xl font-bold ${
-                    offshoreGradient === null ? 'text-gray-400' : 
-                    offshoreGradient < 0 ? 'text-green-600' : 'text-red-600'
-                  } transition-colors duration-300`}>
-                    {offshoreGradient !== null ? `${offshoreGradient > 0 ? '+' : ''}${offshoreGradient}mb` : '--'}
-                  </div>
-                </div>
-                <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg transition-colors duration-300">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 transition-colors duration-300">Onshore (SFO - SMF)</div>
-                  <div className={`text-2xl font-bold ${
-                    onshoreGradient === null ? 'text-gray-400' : 
-                    onshoreGradient > 0 ? 'text-red-600' : 'text-green-600'
-                  } transition-colors duration-300`}>
-                    {onshoreGradient !== null ? `${onshoreGradient > 0 ? '+' : ''}${onshoreGradient}mb` : '--'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Pressure Inputs */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 transition-colors duration-300">
-                      ACV (mb)
-                    </label>
-                    <input
-                      type="number"
-                      value={acvPressure}
-                      onChange={(e) => setAcvPressure(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                      placeholder="1013"
-                      step="0.1"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 transition-colors duration-300">
-                      SFO (mb)
-                    </label>
-                    <input
-                      type="number"
-                      value={sfoPressure}
-                      onChange={(e) => setSfoPressure(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                      placeholder="1019"
-                      step="0.1"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 transition-colors duration-300">
-                      SFO (mb)
-                    </label>
-                    <input
-                      type="number"
-                      value={sfoPressure}
-                      onChange={(e) => setSfoPressure(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                      placeholder="1015"
-                      step="0.1"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 transition-colors duration-300">
-                      SMF (mb)
-                    </label>
-                    <input
-                      type="number"
-                      value={smfPressure}
-                      onChange={(e) => setSmfPressure(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                      placeholder="1011"
-                      step="0.1"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {pressureError && (
-                <div className="p-3 bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700 rounded-lg transition-colors duration-300">
-                  <p className="text-red-600 dark:text-red-400 text-sm">{pressureError}</p>
-                </div>
-              )}
-
-              {pressureLastUpdated && (
-                <div className="text-xs text-gray-500 dark:text-gray-400 transition-colors duration-300">
-                  Last updated: {pressureLastUpdated}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Showalter Index Card */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 transition-colors duration-300">
-            <div className="flex items-center space-x-3 mb-6">
-              <div className="p-2 bg-orange-100 dark:bg-orange-900 rounded-lg transition-colors duration-300">
-                <Wind className="w-6 h-6 text-orange-600 dark:text-orange-400" />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white transition-colors duration-300">
-                  Showalter Index
-                </h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 transition-colors duration-300">
-                  Temperature - Dewpoint spread
-                </p>
-              </div>
-            </div>
-
-            <div className="text-center">
-              <div className="text-6xl font-bold mb-4 transition-colors duration-300">
-                <span className={
-                  si === null ? 'text-gray-400' :
-                  si < 13 ? 'text-red-500' :
-                  si > 22 ? 'text-green-500' :
-                  'text-yellow-500'
-                }>
-                  {si !== null ? si.toFixed(1) : '--'}
-                </span>
-              </div>
-              <div className="text-lg text-gray-600 dark:text-gray-400 transition-colors duration-300">
-                {si !== null ? `${maxTemp}°F - ${maxDewpoint}°F = ${si.toFixed(1)}` : 'Enter temperature data'}
               </div>
               <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg transition-colors duration-300">
                 <div className="flex justify-between text-sm">
@@ -441,84 +599,519 @@ function App() {
                     style={{ width: `${Math.max(0, Math.min(100, ((30 - si) / 23) * 100))}%` }}
                   ></div>
                 </div>
+                <div className="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600 dark:text-gray-400">SI Onset:</span>
+                    <span className="font-medium text-gray-800 dark:text-gray-200">{formatTime(getSITiming(si).start)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600 dark:text-gray-400">SI End:</span>
+                    <span className="font-medium text-gray-800 dark:text-gray-200">{formatTime(getSITiming(si).end)}</span>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Stratus Probability Card */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 transition-colors duration-300">
-            <div className="flex items-center space-x-3 mb-6">
-              <div className="p-2 bg-indigo-100 dark:bg-indigo-900 rounded-lg transition-colors duration-300">
-                <CloudRain className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+            {/* Pressure Gradients */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
+              <div className="flex items-center gap-2 mb-4">
+                <Gauge className="h-5 w-5 text-blue-500" />
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Pressure Gradients</h2>
               </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white transition-colors duration-300">
-                  Stratus Probability
-                </h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 transition-colors duration-300">
-                  Marine layer formation likelihood
+              
+              <div className="grid md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <h3 className="font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                    Offshore (ACV - SFO)
+                    <span className={`text-lg font-bold ${
+                      calculateOFF() >= -3.0 ? 'text-red-600' :
+                      calculateOFF() >= -4.0 ? 'text-orange-600' :
+                      calculateOFF() >= -5.0 ? 'text-yellow-600' :
+                      'text-green-600'
+                    }`}>{calculateOFF().toFixed(1)}mb</span>
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">ACV (mb)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={offPressure.acv}
+                        onChange={(e) => setOffPressure({...offPressure, acv: parseFloat(e.target.value)})}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SFO (mb)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={offPressure.sfo}
+                        onChange={(e) => setOffPressure({...offPressure, sfo: parseFloat(e.target.value)})}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">24hr Trend (mb)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={offPressure.trend24h}
+                      onChange={(e) => setOffPressure({...offPressure, trend24h: parseFloat(e.target.value)})}
+                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                    Onshore (SFO - SMF)
+                    <span className={`text-lg font-bold ${
+                      calculateON() >= 4.0 ? 'text-red-600' :
+                      calculateON() >= 3.6 ? 'text-orange-600' :
+                      calculateON() >= 3.0 ? 'text-yellow-600' :
+                      'text-green-600'
+                    }`}>{calculateON().toFixed(1)}mb</span>
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SFO (mb)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={onPressure.sfo}
+                        onChange={(e) => setOnPressure({...onPressure, sfo: parseFloat(e.target.value)})}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SMF (mb)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={onPressure.smf}
+                        onChange={(e) => setOnPressure({...onPressure, smf: parseFloat(e.target.value)})}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">24hr Trend (mb)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={onPressure.trend24h}
+                      onChange={(e) => setOnPressure({...onPressure, trend24h: parseFloat(e.target.value)})}
+                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg transition-colors duration-300">
+                <p className="text-sm text-blue-800 dark:text-blue-300">
+                  <strong>ON ≥ 3.6mb:</strong> Increases stratus likelihood | 
+                  <strong> OFF ≤ -3.4mb:</strong> Decreases stratus likelihood
                 </p>
               </div>
             </div>
 
-            <div className="text-center">
-              <div className="text-6xl font-bold mb-4 transition-colors duration-300">
-                <span className={
-                  stratusProbability === null ? 'text-gray-400' :
-                  stratusProbability >= 70 ? 'text-red-500' :
-                  stratusProbability >= 40 ? 'text-yellow-500' :
-                  'text-green-500'
-                }>
-                  {stratusProbability !== null ? `${stratusProbability}%` : '--%'}
-                </span>
+            {/* Environmental Factors */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
+              <div className="flex items-center gap-2 mb-4">
+                <Globe className="h-5 w-5 text-green-500" />
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Environmental Factors</h2>
               </div>
               
-              <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400 transition-colors duration-300">
-                <div className="flex justify-between">
-                  <span>Showalter Index:</span>
-                  <span className="font-medium">{si !== null ? si.toFixed(1) : '--'}</span>
+              <div className="grid md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Base Inversion (ft)
+                  </label>
+                  <input
+                    type="number"
+                    value={baseInversion}
+                    onChange={(e) => setBaseInversion(parseInt(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                  />
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                    {baseInversion < 500 ? '⚠️ No formation' : baseInversion < 1000 ? '⚠️ Delayed' : '✅ Normal'}
+                  </p>
                 </div>
-                <div className="flex justify-between">
-                  <span>Offshore Gradient:</span>
-                  <span className="font-medium">{offshoreGradient !== null ? `${offshoreGradient}mb` : '--'}</span>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    2K Winds (Direction °, Speed KT)
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      max="360"
+                      step="10"
+                      value={wind2k.direction}
+                      onChange={(e) => setWind2k({...wind2k, direction: parseInt(e.target.value) || 0})}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={wind2k.speed}
+                      onChange={(e) => setWind2k({...wind2k, speed: parseInt(e.target.value) || 0})}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                    />
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span>Onshore Gradient:</span>
-                  <span className="font-medium">{onshoreGradient !== null ? `${onshoreGradient}mb` : '--'}</span>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Month
+                  </label>
+                  <select
+                    value={month}
+                    onChange={(e) => setMonth(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                  >
+                    <option value="May">May</option>
+                    <option value="June">June</option>
+                    <option value="July">July</option>
+                    <option value="August">August</option>
+                    <option value="September">September</option>
+                  </select>
                 </div>
               </div>
 
-              <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg transition-colors duration-300">
-                <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 transition-colors duration-300">
-                  Probability Scale
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Minimum Afternoon Dewpoint °F
+                </label>
+                <input
+                  type="number"
+                  value={afternoonDewpoint}
+                  onChange={(e) => setAfternoonDewpoint(parseFloat(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                />
+                {afternoonDewpoint < 42 && (
+                  <p className="text-red-600 text-sm mt-1">⚠️ Below 42°F makes stratus improbable</p>
+                )}
+              </div>
+            </div>
+
+            {/* Synoptic Triggers */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
+              <div className="flex items-center gap-2 mb-4">
+                <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Synoptic Triggers</h2>
+                {hasTrigger() && <span className="text-sm bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 px-2 py-1 rounded">Early Onset More Likely ≤03Z</span>}
+              </div>
+              
+              <div className="grid md:grid-cols-2 gap-4">
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                  <input
+                    type="radio"
+                    name="synopticTrigger"
+                    value="deepeningTrough"
+                    checked={selectedTrigger === 'deepeningTrough'}
+                    onChange={(e) => setSelectedTrigger(e.target.checked ? e.target.value : '')}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Deepening Mid-Level Trough</span>
+                </label>
+                
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                  <input
+                    type="radio"
+                    name="synopticTrigger"
+                    value="shortwaveTrough"
+                    checked={selectedTrigger === 'shortwaveTrough'}
+                    onChange={(e) => setSelectedTrigger(e.target.checked ? e.target.value : '')}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Shortwave/Vorticity Maximum</span>
+                </label>
+                
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                  <input
+                    type="radio"
+                    name="synopticTrigger"
+                    value="longWaveTrough"
+                    checked={selectedTrigger === 'longWaveTrough'}
+                    onChange={(e) => setSelectedTrigger(e.target.checked ? e.target.value : '')}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Long-Wave Trough (East of Bay)</span>
+                </label>
+                
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                  <input
+                    type="radio"
+                    name="synopticTrigger"
+                    value="shallowFront"
+                    checked={selectedTrigger === 'shallowFront'}
+                    onChange={(e) => setSelectedTrigger(e.target.checked ? e.target.value : '')}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Shallow Pre-Frontal Boundary</span>
+                </label>
+              </div>
+              
+              <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg transition-colors duration-300">
+                <p className="text-sm text-yellow-800 dark:text-yellow-300">
+                  93% of early stratus onset cases (≤03Z) had one of these triggers present
+                </p>
+              </div>
+            </div>
+
+            {/* Synoptic Patterns */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
+              <div className="flex items-center gap-2 mb-4">
+                <Wind className="h-5 w-5 text-purple-500" />
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Synoptic Patterns</h2>
+                <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">Multiple selections allowed</span>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Surface Patterns</h3>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="checkbox"
+                        checked={synopticPatterns.thermalLow}
+                        onChange={(e) => setSynopticPatterns({...synopticPatterns, thermalLow: e.target.checked})}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Thermal Low (Central Valley)</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="checkbox"
+                        checked={synopticPatterns.surfaceHigh}
+                        onChange={(e) => setSynopticPatterns({...synopticPatterns, surfaceHigh: e.target.checked})}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Surface High (Offshore)</span>
+                    </label>
+                  </div>
                 </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-3">
-                  <div 
-                    className={`h-3 rounded-full transition-all duration-500 ${
-                      stratusProbability === null ? 'bg-gray-400' :
-                      stratusProbability >= 70 ? 'bg-red-500' :
-                      stratusProbability >= 40 ? 'bg-yellow-500' :
-                      'bg-green-500'
-                    }`}
-                    style={{ width: `${stratusProbability || 0}%` }}
-                  ></div>
-                </div>
-                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1 transition-colors duration-300">
-                  <span>Low (0%)</span>
-                  <span>Moderate (50%)</span>
-                  <span>High (100%)</span>
+
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Upper-Level Patterns</h3>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="checkbox"
+                        checked={synopticPatterns.upperRidge}
+                        onChange={(e) => setSynopticPatterns({...synopticPatterns, upperRidge: e.target.checked})}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Upper Ridge</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="checkbox"
+                        checked={synopticPatterns.upperTrough}
+                        onChange={(e) => setSynopticPatterns({...synopticPatterns, upperTrough: e.target.checked})}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Upper Trough</span>
+                    </label>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
+                      <input
+                        type="checkbox"
+                        checked={synopticPatterns.cutoffLow}
+                        onChange={(e) => setSynopticPatterns({...synopticPatterns, cutoffLow: e.target.checked})}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Cutoff Low</span>
+                    </label>
+                  </div>
                 </div>
               </div>
+              
+              <div className="mt-4 p-3 bg-purple-50 dark:bg-purple-900/30 rounded-lg transition-colors duration-300">
+                <p className="text-sm text-purple-800 dark:text-purple-300">
+                  <strong>Optimal Pattern:</strong> Upper ridge + thermal low + offshore surface high enhances marine layer formation
+                </p>
+              </div>
+            </div>
+            {/* Burn-Off Analysis */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
+              <div className="flex items-center gap-2 mb-4">
+                <Sun className="h-5 w-5 text-orange-500" />
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Cohen Burn-Off Analysis</h2>
+              </div>
+              
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    14Z Ceiling Base Height (ft)
+                  </label>
+                  <input
+                    type="number"
+                    value={burnOff.base}
+                    onChange={(e) => setBurnOff({...burnOff, base: parseInt(e.target.value) || 0})}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Cloud Top (ft)
+                  </label>
+                  <input
+                    type="number"
+                    value={burnOff.top}
+                    onChange={(e) => setBurnOff({...burnOff, top: parseInt(e.target.value) || 0})}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                  />
+                </div>
+              </div>
+              
+              <div className="mt-4 p-3 bg-orange-50 dark:bg-orange-900/30 rounded-lg transition-colors duration-300">
+                <p className="text-sm text-orange-800 dark:text-orange-300">
+                  <strong>Estimated SCT Time:</strong> {calculateBurnOffTime(burnOff.base, burnOff.top)} hours after sunrise
+                  <br />
+                  <strong>Burn Rate:</strong> ~200 ft/hr | <strong>Thickness:</strong> {burnOff.top - burnOff.base}ft
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Results Panel */}
+          <div className="lg:col-span-1">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 sticky top-6 transition-colors duration-300">
+              <div className="flex items-center gap-2 mb-6">
+                <Clock className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                <h2 className="text-xl font-bold text-gray-800 dark:text-white">Forecast Summary</h2>
+              </div>
+
+              {/* Probability Gauge */}
+              <div className="text-center mb-6">
+                <div className="relative inline-block">
+                  <div className="w-32 h-32 rounded-full border-8 border-gray-200 relative">
+                    <div 
+                      className={`absolute inset-0 rounded-full border-8 border-transparent ${
+                        prediction.probability > 70 ? 'border-red-500' :
+                        prediction.probability > 40 ? 'border-yellow-500' : 'border-green-500'
+                      }`}
+                      style={{
+                        background: `conic-gradient(${
+                          prediction.probability > 70 ? '#ef4444' :
+                          prediction.probability > 40 ? '#f59e0b' : '#10b981'
+                        } ${prediction.probability * 3.6}deg, #e5e7eb 0deg)`
+                      }}
+                    ></div>
+                    <div className="absolute inset-4 bg-white dark:bg-gray-800 rounded-full flex items-center justify-center transition-colors duration-300">
+                      <span className="text-2xl font-bold text-gray-800 dark:text-white">{prediction.probability}%</span>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-lg font-semibold mt-2 text-gray-700 dark:text-gray-300">Stratus Probability</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Confidence: {prediction.confidence}</p>
+              </div>
+
+              {/* Timing Results */}
+              <div className="space-y-3 mb-6">
+                {prediction.onsetWindow.mostProbable <= 24 ? (
+                  <>
+                    <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4 transition-colors duration-300">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-medium text-blue-800 dark:text-blue-300">Onset Window</span>
+                        <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                          {formatTime(prediction.onsetWindow.earliest)}-{formatTime(prediction.onsetWindow.latest)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-blue-700 dark:text-blue-400">Most Probable</span>
+                        <span className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                          {formatTime(prediction.onsetWindow.mostProbable)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="bg-green-50 dark:bg-green-900/30 rounded-lg p-4 transition-colors duration-300">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-medium text-green-800 dark:text-green-300">End Window</span>
+                        <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                          {formatTime(prediction.endWindow.earliest)}-{formatTime(prediction.endWindow.latest)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-green-700 dark:text-green-400">Most Probable</span>
+                        <span className="text-xl font-bold text-green-600 dark:text-green-400">
+                          {formatTime(prediction.endWindow.mostProbable)}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="bg-red-50 dark:bg-red-900/30 rounded-lg p-4 transition-colors duration-300">
+                    <div className="text-center">
+                      <span className="text-xl font-bold text-red-600 dark:text-red-400">No Stratus Event Expected</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-orange-50 dark:bg-orange-900/30 rounded-lg p-4 transition-colors duration-300">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-orange-800 dark:text-orange-300">Burn-Off (SCT)</span>
+                    <span className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                      Sunrise + {prediction.burnOffHours}hrs
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center mt-2 pt-2 border-t border-orange-200 dark:border-orange-700">
+                    <span className="text-sm text-orange-700 dark:text-orange-400">SFO Sunrise</span>
+                    <span className="text-sm font-semibold text-orange-600 dark:text-orange-400">
+                      {getSunriseTime()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Reasoning */}
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4 transition-colors duration-300">
+                <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Analysis</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{prediction.reasoning}</p>
+                {hasTrigger() && (
+                  <p className="text-sm text-yellow-700 dark:text-yellow-400 font-medium">⚡ Synoptic trigger detected - early onset more likely</p>
+                )}
+                {prediction.synopticEffects && prediction.synopticEffects.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-300 dark:border-gray-600">
+                    <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Synoptic Pattern Effects:</p>
+                    {prediction.synopticEffects.map((effect, idx) => (
+                      <p key={idx} className="text-xs text-purple-600 dark:text-purple-400">• {effect}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Warnings */}
+              {prediction.warnings.length > 0 && (
+                <div className="bg-red-50 dark:bg-red-900/30 rounded-lg p-4 transition-colors duration-300">
+                  <h3 className="font-semibold text-red-700 dark:text-red-400 mb-2 flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    Notice!
+                  </h3>
+                  <ul className="text-sm text-red-600 dark:text-red-400 space-y-1">
+                    {prediction.warnings.map((warning, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <span className="text-red-500 dark:text-red-400 mt-0.5">•</span>
+                        {warning}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="mt-12 text-center text-gray-500 dark:text-gray-400 text-sm transition-colors duration-300">
-          <p>
-            Data sourced from National Weather Service METAR observations. 
-            This tool is for educational and planning purposes only.
-          </p>
+        <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
+          <p>Based on Cohen-Lau SFO Marine Layer Study (1991-1994) • 613 case dataset</p>
         </div>
       </div>
     </div>
