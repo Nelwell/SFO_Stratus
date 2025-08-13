@@ -78,13 +78,13 @@ const getCurrentDewpoint = (observation: MetarObservation): number | null => {
   return null;
 };
 
-// Check if timestamp is within 20Z-00Z window (accounting for METAR timing ~5min before hour)
-const isIn20to23ZWindow = (timestamp: string): boolean => {
+// Check if timestamp is within 19Z-23Z window (accounting for METAR timing ~5min before hour)
+const isIn19to23ZWindow = (timestamp: string): boolean => {
   const obsTime = new Date(timestamp);
   const utcHour = obsTime.getUTCHours();
   
-  // Just look for hours 20, 21, 22, 23Z
-  return utcHour >= 20 && utcHour <= 23;
+  // Just look for hours 19, 20, 21, 22, 23Z
+  return utcHour >= 19 && utcHour <= 23;
 };
 
 // Check if this is an hourly METAR (issued at 53-59 minutes past the hour)
@@ -96,22 +96,22 @@ const isHourlyMetar = (timestamp: string): boolean => {
   return minutes >= 53 && minutes <= 59;
 };
 
-// Get the date string for the most recent 20Z period for display
-const getMostRecent20ZDateString = (): string => {
+// Get the date string for the most recent 19Z period for display
+const getMostRecent19ZDateString = (): string => {
   const now = new Date();
   const utcHour = now.getUTCHours();
   
-  // Find the most recent 20Z period
+  // Find the most recent 19Z period
   let targetDate = new Date(now);
-  if (utcHour < 20) {
-    // If before 20Z today, use yesterday's 20Z-00Z period
+  if (utcHour < 19) {
+    // If before 19Z today, use yesterday's 19Z-23Z period
     targetDate.setUTCDate(now.getUTCDate() - 1);
   }
   
   const startDate = targetDate.getUTCDate();
-  const endDate = (targetDate.getUTCDate() + 1) % 32; // Handle month rollover roughly
+  const endDate = targetDate.getUTCDate(); // Same day since we're not crossing midnight
   
-  return `${String(startDate).padStart(2, '0')}20Z-${String(endDate).padStart(2, '0')}00Z`;
+  return `${String(startDate).padStart(2, '0')}19Z-${String(endDate).padStart(2, '0')}23Z`;
 };
 
 // Fetch METAR observations from NWS API
@@ -150,12 +150,12 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
       throw new Error('No observations available');
     }
     
-    // Filter observations for 20Z-23Z window AND only hourly METARs
+    // Filter observations for 19Z-23Z window AND only hourly METARs
     const relevantObs = observations.filter(obs => 
-      isIn20to23ZWindow(obs.timestamp) && isHourlyMetar(obs.timestamp)
+      isIn19to23ZWindow(obs.timestamp) && isHourlyMetar(obs.timestamp)
     );
     
-    console.log(`Found ${relevantObs.length} hourly observations in 20Z-23Z window`);
+    console.log(`Found ${relevantObs.length} hourly observations in 19Z-23Z window`);
     relevantObs.forEach(obs => {
       console.log(`  - ${formatTimestamp(obs.timestamp)}: ${obs.rawMessage?.substring(0, 50)}...`);
     });
@@ -164,7 +164,7 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
     let maxDewpoint: number | null = null;
     let latestTimestamp = '';
     
-    // Process each observation in the 20-00Z window
+    // Process each observation in the 19-23Z window
     for (const obs of relevantObs) {
       console.log(`Processing obs at ${formatTimestamp(obs.timestamp)}: ${obs.rawMessage?.substring(0, 50)}...`);
       
@@ -201,7 +201,7 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
     return {
       maxTemp,
       maxDewpoint,
-      dataSource: `NWS METAR (KSFO) 20Z-23Z window`,
+      dataSource: `NWS METAR (KSFO) 19Z-23Z window`,
       timestamp: latestTimestamp || new Date().toISOString()
     };
     
