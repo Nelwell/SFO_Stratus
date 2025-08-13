@@ -746,6 +746,10 @@ function App() {
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Minimum Afternoon Dewpoint °F
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Offshore {pressureData?.offshore24hrTrend !== null ? '(Auto)' : ''}
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Onshore {pressureData?.onshore24hrTrend !== null ? '(Auto)' : ''}
                 </label>
                 <input
                   type="number"
