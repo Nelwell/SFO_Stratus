@@ -84,11 +84,9 @@ const isIn20to00ZWindow = (timestamp: string): boolean => {
   const utcHour = obsTime.getUTCHours();
   const utcMinute = obsTime.getUTCMinutes();
   
-  // 20Z-00Z window: hours 20, 21, 22, 23
-  // Also include 1955Z (for 20Z METAR) and 2355Z (for 00Z METAR)
-  return (utcHour >= 20 && utcHour <= 23) || 
-         (utcHour === 19 && utcMinute >= 55) ||
-         (utcHour === 23 && utcMinute >= 55);
+  // 1955Z-2359Z window
+  return (utcHour === 19 && utcMinute >= 55) ||
+         (utcHour >= 20 && utcHour <= 23);
 };
 
 // Get the date string for the most recent 20Z period for display
