@@ -70,15 +70,12 @@ function App() {
   });
   const [burnOff, setBurnOff] = useState<BurnOffData>({
     base: 800,
-    top: 1700,
-  };
-
-  const [ksfo, setKsfo] = useState<string>('');
-  const [kacv, setKacv] = useState<string>('');
-  const [ksmf, setKsmf] = useState<string>('');
+    top: 1700
+  });
+  const [month, setMonth] = useState<string>('July');
+  const [afternoonDewpoint, setAfternoonDewpoint] = useState<number>(55);
   const [darkMode, setDarkMode] = useState<boolean>(false);
   const [temperatureData, setTemperatureData] = useState<TemperatureData | null>(null);
-  const [pressureData, setPressureData] = useState<PressureData | null>(null);
   const [isLoadingTemps, setIsLoadingTemps] = useState<boolean>(false);
   const [tempDataError, setTempDataError] = useState<string | null>(null);
   const [pressureData, setPressureData] = useState<PressureData | null>(null);
@@ -141,31 +138,6 @@ function App() {
       console.error('Temperature data fetch error:', error);
     } finally {
       setIsLoadingTemps(false);
-    }
-  };
-
-  const fetchPressureDataHandler = async () => {
-    setIsLoadingPressure(true);
-    setPressureError(null);
-    
-    try {
-      const data = await fetchPressureData();
-      setPressureData(data);
-      
-      if (data.ksfo !== null) {
-        setKsfo(data.ksfo.toString());
-      }
-      if (data.kacv !== null) {
-        setKacv(data.kacv.toString());
-      }
-      if (data.ksmf !== null) {
-        setKsmf(data.ksmf.toString());
-      }
-    } catch (error) {
-      console.error('Error fetching pressure data:', error);
-      setPressureError(error instanceof Error ? error.message : 'Failed to fetch pressure data');
-    } finally {
-      setIsLoadingPressure(false);
     }
   };
 
@@ -502,7 +474,6 @@ function App() {
   };
 
   const prediction = getFinalPrediction();
-    fetchPressureDataHandler();
   const si = calculateSI();
 
   return (
@@ -1127,55 +1098,10 @@ function App() {
           </div>
         </div>
 
-        {/* Pressure Gradient Card */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 transition-colors duration-300">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Gauge className="w-5 h-5 text-blue-600" />
-              <h2 className="text-xl font-semibold text-gray-800 dark:text-white">
-                Pressure Gradient
-              </h2>
-              <span className="text-2xl font-bold text-blue-600">
-                {pressureGradient.toFixed(1)}
-              </span>
-            </div>
-            <button
-              onClick={fetchPressureDataHandler}
-              disabled={isLoadingPressure}
-              className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors duration-200 disabled:opacity-50"
-              title="Refresh pressure data"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoadingPressure ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-          
-          {pressureData && !pressureError && (
-            <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 transition-colors duration-300">
-              <div className="flex items-center gap-2 text-green-700 dark:text-green-300 text-sm">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="font-medium">Auto-populated from {pressureData.dataSource}</span>
-              </div>
-              <div className="text-green-600 dark:text-green-400 text-xs mt-1">
-                Last updated: {formatTimestamp(pressureData.timestamp)} | 
-                KSFO: {pressureData.ksfo ? `${pressureData.ksfo} mb` : 'N/A'} | 
-                KACV: {pressureData.kacv ? `${pressureData.kacv} mb` : 'N/A'} | 
-                KSMF: {pressureData.ksmf ? `${pressureData.ksmf} mb` : 'N/A'}
-              </div>
-            </div>
-          )}
-          
-          {pressureError && (
-            <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800 transition-colors duration-300">
-              <div className="flex items-center gap-2 text-red-700 dark:text-red-300 text-sm">
-                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                <span className="font-medium">Error loading pressure data</span>
-              </div>
+        {/* Footer */}
+        <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
+          <p>Based on Cohen-Lau SFO Marine Layer Study (1991-1994) • 613 case dataset</p>
         </div>
-
-        <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg transition-colors duration-300">
-          <div className="text-xs text-gray-500 dark:text-gray-500">
-            Pressure Gradient = (KACV + KSMF) / 2 - KSFO
-          </div>
       </div>
     </div>
   );
