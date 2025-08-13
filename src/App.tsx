@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye, Moon, Globe, RefreshCw, Wifi } from 'lucide-react';
-import { fetchKSFOTemperatureData, fetchAllStationPressureData, formatTimestamp, type TemperatureData, type PressureData } from './utils/nwsApi';
+import { fetchKSFOTemperatureData, formatTimestamp, type TemperatureData } from './utils/nwsApi';
 
 // SFO coordinates for sunrise calculation
 const SFO_LAT = 37.6213;
@@ -78,16 +78,6 @@ function App() {
   const [temperatureData, setTemperatureData] = useState<TemperatureData | null>(null);
   const [isLoadingTemps, setIsLoadingTemps] = useState<boolean>(false);
   const [tempDataError, setTempDataError] = useState<string | null>(null);
-  const [acvPressure, setAcvPressure] = useState<string>('');
-  const [sfoPressureGradient, setSfoPressureGradient] = useState<string>('');
-  const [smfPressure, setSmfPressure] = useState<string>('');
-  const [pressureStatus, setPressureStatus] = useState<string>('');
-  const [pressureLoading, setPressureLoading] = useState(false);
-  const [pressureData, setPressureData] = useState<{acv: PressureData; sfo: PressureData; smf: PressureData} | null>(null);
-  const [isLoadingPressure, setIsLoadingPressure] = useState(false);
-  const [sfoPressure, setSfoPressure] = useState<number | null>(null);
-  const [pressureError, setPressureError] = useState<string | null>(null);
-  const [lastPressureUpdate, setLastPressureUpdate] = useState<string>('');
 
   // Calculate sunrise time for SFO
   const getSunriseTime = () => {
@@ -147,57 +137,6 @@ function App() {
       setIsLoadingTemps(false);
     }
   };
-
-  // Fetch pressure data
-  const fetchPressureData = async () => {
-    setIsLoadingPressure(true);
-    setPressureError(null);
-    
-    try {
-      const data = await fetchAllStationPressureData();
-      setPressureData(data);
-      
-      // Auto-fill the pressure fields
-      setAcvPressure(data.acv.pressure?.toString() || '');
-      setSfoPressure(data.sfo.pressure?.toString() || '');
-      // Auto-populate the input fields with null checks
-      if (pressureData && pressureData.acv) {
-        setAcvPressure(pressureData.acv.pressure?.toString() || '');
-      }
-      if (pressureData && pressureData.sfo) {
-        setSfoPressure(pressureData.sfo.pressure?.toString() || '');
-      }
-      if (pressureData && pressureData.smf) {
-        setSmfPressure(pressureData.smf.pressure?.toString() || '');
-      }
-      if (pressureData.sfo.pressure !== null) {
-        setSfoInput(pressureData.sfo.pressure.toString());
-      }
-      if (pressureData.smf.pressure !== null) {
-        setSmfInput(pressureData.smf.pressure.toString());
-      }
-      
-      setSmfPressure(data.smf.pressure?.toString() || '');
-      
-      setLastPressureUpdate(new Date().toLocaleTimeString());
-    } catch (error) {
-      setPressureError(error instanceof Error ? error.message : 'Failed to fetch pressure data');
-      console.error('Pressure fetch error:', error);
-    } finally {
-      // Set default values to prevent null access errors
-      const defaultPressureData = {
-        acv: { station: 'KACV', pressure: null, timestamp: '', dataSource: '' },
-        sfo: { station: 'KSFO', pressure: null, timestamp: '', dataSource: '' },
-        smf: { station: 'KSMF', pressure: null, timestamp: '', dataSource: '' }
-      };
-      setIsLoadingPressure(false);
-    }
-  };
-
-  // Auto-fetch pressure data on component mount
-  useEffect(() => {
-    fetchPressureData();
-  }, []);
 
   // Load temperature data on component mount
   useEffect(() => {
