@@ -67,12 +67,30 @@ const getCurrentDewpoint = (observation: MetarObservation): number | null => {
 };
 
 // Check if timestamp is within 20-24Z window (considering it might be from previous day)
-const isIn20to24ZWindow = (timestamp: string): boolean => {
+const isIn20to00ZWindow = (timestamp: string, windowStart: Date): boolean => {
   const obsTime = new Date(timestamp);
-  const utcHour = obsTime.getUTCHours();
+  const windowEnd = new Date(windowStart);
+  windowEnd.setUTCHours(windowEnd.getUTCHours() + 4); // 4 hours later (20Z to 00Z next day)
   
-  // 20-24Z window
-  return utcHour >= 20 || utcHour <= 23;
+  return obsTime >= windowStart && obsTime <= windowEnd;
+};
+
+// Find the most recent 20Z start time
+const findMostRecent20Z = (): Date => {
+  const now = new Date();
+  const currentHour = now.getUTCHours();
+  
+  // If it's currently between 00Z-19Z, use yesterday's 20Z
+  // If it's currently 20Z or later, use today's 20Z
+  const targetDate = new Date(now);
+  
+  if (currentHour < 20) {
+    // Use yesterday's 20Z
+    targetDate.setUTCDate(targetDate.getUTCDate() - 1);
+  }
+  
+  targetDate.setUTCHours(20, 0, 0, 0);
+  return targetDate;
 };
 
 // Fetch METAR observations from NWS API
@@ -105,14 +123,15 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
       throw new Error('No observations available');
     }
     
-    // Filter observations for 20-24Z window from the last day or two
-    const relevantObs = observations.filter(obs => isIn20to24ZWindow(obs.timestamp));
+    // Find the most recent 20Z and filter observations for that 20-00Z window
+    const windowStart = findMostRecent20Z();
+    const relevantObs = observations.filter(obs => isIn20to00ZWindow(obs.timestamp, windowStart));
     
     let maxTemp: number | null = null;
     let maxDewpoint: number | null = null;
     let latestTimestamp = '';
     
-    // Process each observation in the 20-24Z window
+    // Process each observation in the 20-00Z window
     for (const obs of relevantObs) {
       // Try to get max temp from remarks first
       const remarksData = parseMaxFromRemarks(obs.rawMessage || '');
@@ -147,7 +166,7 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
     return {
       maxTemp,
       maxDewpoint,
-      dataSource: 'NWS METAR (KSFO)',
+      dataSource: `NWS METAR (KSFO) ${windowStart.getUTCDate().toString().padStart(2, '0')}${windowStart.getUTCHours().toString().padStart(2, '0')}Z-${String(windowStart.getUTCDate() + (windowStart.getUTCHours() === 20 ? 1 : 0)).padStart(2, '0')}00Z`,
       timestamp: latestTimestamp || new Date().toISOString()
     };
     
