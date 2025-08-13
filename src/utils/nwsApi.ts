@@ -84,23 +84,11 @@ const isIn20to00ZWindow = (timestamp: string): boolean => {
   const utcHour = obsTime.getUTCHours();
   const utcMinute = obsTime.getUTCMinutes();
   
-  // 20Z observation (usually 1955Z) through 00Z observation (usually 2355Z)
-  // This covers hours 20, 21, 22, 23
-  if (utcHour >= 20 || utcHour <= 23) {
-    return true;
-  }
-  
-  // Include observations just before 20Z (like 1955Z for 20Z METAR)
-  if (utcHour === 19 && utcMinute >= 55) {
-    return true;
-  }
-  
-  // Include observations just before 00Z (like 2355Z for 00Z METAR)
-  if (utcHour === 23 && utcMinute >= 55) {
-    return true;
-  }
-  
-  return false;
+  // 20Z-00Z window: hours 20, 21, 22, 23
+  // Also include 1955Z (for 20Z METAR) and 2355Z (for 00Z METAR)
+  return (utcHour >= 20 && utcHour <= 23) || 
+         (utcHour === 19 && utcMinute >= 55) ||
+         (utcHour === 23 && utcMinute >= 55);
 };
 
 // Get the date string for the most recent 20Z period for display
@@ -126,7 +114,7 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
   try {
     // Get last 24 hours of observations to ensure we capture 20-24Z window
     const response = await fetch(
-      'https://api.weather.gov/stations/KSFO/observations?limit=100',
+      'https://api.weather.gov/stations/KSFO/observations?limit=30',
       {
         headers: {
           'User-Agent': 'SFO-Stratus-Tool/1.0 (Weather Forecasting Application)'
