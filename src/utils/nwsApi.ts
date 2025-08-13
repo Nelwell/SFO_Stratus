@@ -66,31 +66,40 @@ const getCurrentDewpoint = (observation: MetarObservation): number | null => {
   return null;
 };
 
-// Check if timestamp is within 20-24Z window (considering it might be from previous day)
-const isIn20to00ZWindow = (timestamp: string, windowStart: Date): boolean => {
+// Check if timestamp is within 20Z-00Z window (accounting for METAR timing ~5min before hour)
+const isIn20to00ZWindow = (timestamp: string): boolean => {
   const obsTime = new Date(timestamp);
-  const windowEnd = new Date(windowStart);
-  windowEnd.setUTCHours(windowEnd.getUTCHours() + 4); // 4 hours later (20Z to 00Z next day)
+  const utcHour = obsTime.getUTCHours();
+  const utcMinute = obsTime.getUTCMinutes();
   
-  return obsTime >= windowStart && obsTime <= windowEnd;
+  // 20Z observation (usually 1955Z) through 00Z observation (usually 2355Z previous day)
+  // This covers hours 20, 21, 22, 23 (which is 00Z next day)
+  if (utcHour >= 20 && utcHour <= 23) {
+    return true;
+  }
+  
+  // Also include observations just before 20Z (like 1955Z for 20Z METAR)
+  if (utcHour === 19 && utcMinute >= 50) {
+    return true;
+  }
+  
+  return false;
 };
 
-// Find the most recent 20Z start time
-const findMostRecent20Z = (): Date => {
+// Get the date string for the most recent 20Z period for display
+const getMostRecent20ZDateString = (): string => {
   const now = new Date();
   const currentHour = now.getUTCHours();
   
-  // If it's currently between 00Z-19Z, use yesterday's 20Z
-  // If it's currently 20Z or later, use today's 20Z
   const targetDate = new Date(now);
-  
   if (currentHour < 20) {
     // Use yesterday's 20Z
     targetDate.setUTCDate(targetDate.getUTCDate() - 1);
   }
   
   targetDate.setUTCHours(20, 0, 0, 0);
-  return targetDate;
+  const dateStr = String(targetDate.getUTCDate()).padStart(2, '0');
+  return `${dateStr}20Z-${String(targetDate.getUTCDate() + 1).padStart(2, '0')}00Z`;
 };
 
 // Fetch METAR observations from NWS API
@@ -98,7 +107,7 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
   try {
     // Get last 24 hours of observations to ensure we capture 20-24Z window
     const response = await fetch(
-      'https://api.weather.gov/stations/KSFO/observations?limit=50',
+      'https://api.weather.gov/stations/KSFO/observations?limit=100',
       {
         headers: {
           'User-Agent': 'SFO-Stratus-Tool/1.0 (Weather Forecasting Application)'
@@ -123,9 +132,8 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
       throw new Error('No observations available');
     }
     
-    // Find the most recent 20Z and filter observations for that 20-00Z window
-    const windowStart = findMostRecent20Z();
-    const relevantObs = observations.filter(obs => isIn20to00ZWindow(obs.timestamp, windowStart));
+    // Filter observations for 20Z-00Z window
+    const relevantObs = observations.filter(obs => isIn20to00ZWindow(obs.timestamp));
     
     let maxTemp: number | null = null;
     let maxDewpoint: number | null = null;
@@ -166,7 +174,7 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
     return {
       maxTemp,
       maxDewpoint,
-      dataSource: `NWS METAR (KSFO) ${String(windowStart.getUTCDate()).padStart(2, '0')}${String(windowStart.getUTCHours()).padStart(2, '0')}Z-${String(windowStart.getUTCDate() + 1).padStart(2, '0')}00Z`,
+      dataSource: `NWS METAR (KSFO) ${getMostRecent20ZDateString()}`,
       timestamp: latestTimestamp || new Date().toISOString()
     };
     
