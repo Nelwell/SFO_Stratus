@@ -166,7 +166,7 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
     return {
       maxTemp,
       maxDewpoint,
-      dataSource: `NWS METAR (KSFO) ${windowStart.getUTCDate().toString().padStart(2, '0')}${windowStart.getUTCHours().toString().padStart(2, '0')}Z-${String(windowStart.getUTCDate() + (windowStart.getUTCHours() === 20 ? 1 : 0)).padStart(2, '0')}00Z`,
+      dataSource: `NWS METAR (KSFO) ${String(windowStart.getUTCDate()).padStart(2, '0')}${String(windowStart.getUTCHours()).padStart(2, '0')}Z-${String(windowStart.getUTCDate() + 1).padStart(2, '0')}00Z`,
       timestamp: latestTimestamp || new Date().toISOString()
     };
     
