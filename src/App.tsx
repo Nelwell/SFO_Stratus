@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye, Moon, Globe, RefreshCw, Wifi } from 'lucide-react';
-import { fetchKSFOTemperatureData, fetchAllStationPressureData, type TemperatureData, type PressureData } from './utils/nwsApi';
+import { fetchKSFOTemperatureData, fetchAllStationPressureData, formatTimestamp, type TemperatureData, type PressureData } from './utils/nwsApi';
 
 // SFO coordinates for sunrise calculation
 const SFO_LAT = 37.6213;
@@ -78,6 +78,11 @@ function App() {
   const [temperatureData, setTemperatureData] = useState<TemperatureData | null>(null);
   const [isLoadingTemps, setIsLoadingTemps] = useState<boolean>(false);
   const [tempDataError, setTempDataError] = useState<string | null>(null);
+  const [acvPressure, setAcvPressure] = useState<string>('');
+  const [sfoPressureGradient, setSfoPressureGradient] = useState<string>('');
+  const [smfPressure, setSmfPressure] = useState<string>('');
+  const [pressureStatus, setPressureStatus] = useState<string>('');
+  const [pressureLoading, setPressureLoading] = useState(false);
   const [pressureData, setPressureData] = useState<{acv: PressureData; sfo: PressureData; smf: PressureData} | null>(null);
   const [isLoadingPressure, setIsLoadingPressure] = useState(false);
   const [pressureError, setPressureError] = useState<string | null>(null);
