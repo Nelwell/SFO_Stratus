@@ -29,29 +29,41 @@ const celsiusToFahrenheit = (celsius: number): number => {
 const parseMaxFromRemarks = (rawMetar: string): { maxTemp: number | null; maxDewpoint: number | null } => {
   if (!rawMetar) return { maxTemp: null, maxDewpoint: null };
   
+  console.log(`Parsing METAR: ${rawMetar}`);
+  
   let maxTemp: number | null = null;
   let maxDewpoint: number | null = null;
   
   // Look for RMK section
   const rmkIndex = rawMetar.indexOf('RMK');
-  if (rmkIndex === -1) return { maxTemp: null, maxDewpoint: null };
+  if (rmkIndex === -1) {
+    console.log('No RMK section found');
+    return { maxTemp: null, maxDewpoint: null };
+  }
   
   const remarks = rawMetar.substring(rmkIndex);
+  console.log(`Remarks section: ${remarks}`);
   
   // Parse temperature/dewpoint from T group: TXXXXXXXX (where first 4 digits are temp, last 4 are dewpoint in tenths of degrees C)
   const tempDewMatch = remarks.match(/T([01])(\d{3})([01])(\d{3})/);
   if (tempDewMatch) {
+    console.log(`Found T group: ${tempDewMatch[0]}`);
+    
     // Parse temperature
     const tempSign = tempDewMatch[1] === '1' ? -1 : 1;
     const tempTenths = parseInt(tempDewMatch[2]);
     const tempC = (tempSign * tempTenths) / 10;
     maxTemp = celsiusToFahrenheit(tempC);
+    console.log(`Parsed temp: ${tempSign} * ${tempTenths} / 10 = ${tempC}C = ${maxTemp}F`);
     
     // Parse dewpoint
     const dewSign = tempDewMatch[3] === '1' ? -1 : 1;
     const dewTenths = parseInt(tempDewMatch[4]);
     const dewC = (dewSign * dewTenths) / 10;
     maxDewpoint = celsiusToFahrenheit(dewC);
+    console.log(`Parsed dewpoint: ${dewSign} * ${dewTenths} / 10 = ${dewC}C = ${maxDewpoint}F`);
+  } else {
+    console.log('No T group found in remarks');
   }
   
   return { maxTemp, maxDewpoint };
