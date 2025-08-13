@@ -184,6 +184,12 @@ function App() {
       setPressureError(error instanceof Error ? error.message : 'Failed to fetch pressure data');
       console.error('Pressure fetch error:', error);
     } finally {
+      // Set default values to prevent null access errors
+      const defaultPressureData = {
+        acv: { station: 'KACV', pressure: null, timestamp: '', dataSource: '' },
+        sfo: { station: 'KSFO', pressure: null, timestamp: '', dataSource: '' },
+        smf: { station: 'KSMF', pressure: null, timestamp: '', dataSource: '' }
+      };
       setIsLoadingPressure(false);
     }
   };
