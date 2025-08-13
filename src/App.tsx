@@ -160,9 +160,15 @@ function App() {
       // Auto-fill the pressure fields
       setAcvPressure(data.acv.pressure?.toString() || '');
       setSfoPressure(data.sfo.pressure?.toString() || '');
-      // Auto-populate the input fields
-      if (pressureData.acv.pressure !== null) {
-        setAcvInput(pressureData.acv.pressure.toString());
+      // Auto-populate the input fields with null checks
+      if (pressureData && pressureData.acv) {
+        setAcvPressure(pressureData.acv.pressure?.toString() || '');
+      }
+      if (pressureData && pressureData.sfo) {
+        setSfoPressure(pressureData.sfo.pressure?.toString() || '');
+      }
+      if (pressureData && pressureData.smf) {
+        setSmfPressure(pressureData.smf.pressure?.toString() || '');
       }
       if (pressureData.sfo.pressure !== null) {
         setSfoInput(pressureData.sfo.pressure.toString());
