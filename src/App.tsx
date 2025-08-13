@@ -71,6 +71,8 @@ function App() {
   const [burnOff, setBurnOff] = useState<BurnOffData>({
     base: 800,
     top: 1700
+  };
+
   const [ksfo, setKsfo] = useState<string>('');
   const [kacv, setKacv] = useState<string>('');
   const [ksmf, setKsmf] = useState<string>('');
