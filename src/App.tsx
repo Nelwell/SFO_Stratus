@@ -555,7 +555,6 @@ function App() {
                     <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white">
                       {pressureData ? pressureData.stations.SFO.current : '--'}
                     </div>
-                  </div>
                 </div>
               )}
               
