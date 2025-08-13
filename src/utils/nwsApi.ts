@@ -131,6 +131,12 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
       rawMessage: feature.properties.rawMessage
     })) || [];
     
+    console.log('=== ALL FETCHED OBSERVATIONS ===');
+    observations.forEach((obs, index) => {
+      console.log(`${index + 1}. ${formatTimestamp(obs.timestamp)} - ${obs.rawMessage?.substring(0, 80)}...`);
+    });
+    console.log('=== END ALL OBSERVATIONS ===');
+    
     if (observations.length === 0) {
       throw new Error('No observations available');
     }
