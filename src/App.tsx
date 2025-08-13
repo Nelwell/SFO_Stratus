@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye, Moon, Globe, RefreshCw, Wifi } from 'lucide-react';
-import { fetchKSFOTemperatureData, formatTimestamp, type TemperatureData } from './utils/nwsApi';
+import { fetchKSFOTemperatureData, fetchPressureGradients, formatTimestamp, type TemperatureData, type PressureData } from './utils/nwsApi';
 
 // SFO coordinates for sunrise calculation
 const SFO_LAT = 37.6213;
