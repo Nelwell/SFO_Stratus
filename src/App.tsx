@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye, Moon, Globe, RefreshCw, Wifi } from 'lucide-react';
-import { fetchKSFOTemperatureData, fetchPressureGradients, formatTimestamp, type TemperatureData, type PressureData } from './utils/nwsApi';
+import { fetchKSFOTemperatureData, formatTimestamp, type TemperatureData } from './utils/nwsApi';
 
 // SFO coordinates for sunrise calculation
 const SFO_LAT = 37.6213;
@@ -746,10 +746,6 @@ function App() {
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Minimum Afternoon Dewpoint °F
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Offshore {pressureData?.offshore24hrTrend !== null ? '(Auto)' : ''}
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Onshore {pressureData?.onshore24hrTrend !== null ? '(Auto)' : ''}
                 </label>
                 <input
                   type="number"
