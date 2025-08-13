@@ -20,14 +20,6 @@ export interface TemperatureData {
   timestamp: string;
 }
 
-export interface PressureData {
-  ksfo: number | null;
-  kacv: number | null;
-  ksmf: number | null;
-  dataSource: string;
-  timestamp: string;
-}
-
 // Convert Celsius to Fahrenheit
 const celsiusToFahrenheit = (celsius: number): number => {
   return Math.round((celsius * 9/5) + 32);
@@ -120,85 +112,6 @@ const getMostRecent20ZDateString = (): string => {
   const endDate = targetDate.getUTCDate(); // Same day since we're not crossing midnight
   
   return `${String(startDate).padStart(2, '0')}20Z-${String(endDate).padStart(2, '0')}24Z`;
-};
-
-// Parse pressure from METAR raw message
-const parsePressureFromMetar = (rawMetar: string): number | null => {
-  if (!rawMetar) return null;
-  
-  // Look for altimeter setting in format A#### (inches Hg * 100)
-  const altimeterMatch = rawMetar.match(/A(\d{4})/);
-  if (altimeterMatch) {
-    const inchesHg = parseInt(altimeterMatch[1]) / 100;
-    // Convert inches Hg to millibars: 1 inHg = 33.8639 mb
-    const mb = Math.round(inchesHg * 33.8639 * 10) / 10; // Round to 1 decimal
-    return mb;
-  }
-  
-  // Look for QNH in format Q#### (millibars)
-  const qnhMatch = rawMetar.match(/Q(\d{4})/);
-  if (qnhMatch) {
-    return parseInt(qnhMatch[1]) / 10; // QNH is in tenths of millibars
-  }
-  
-  return null;
-};
-
-// Fetch current pressure data from multiple stations
-export const fetchPressureData = async (): Promise<PressureData> => {
-  const stations = ['KSFO', 'KACV', 'KSMF'];
-  const pressures: { [key: string]: number | null } = {};
-  let latestTimestamp = '';
-  
-  try {
-    // Fetch latest observation from each station
-    for (const station of stations) {
-      try {
-        const response = await fetch(
-          `https://api.weather.gov/stations/${station}/observations/latest`,
-          {
-            headers: {
-              'User-Agent': 'SFO-Stratus-Tool/1.0 (Weather Forecasting Application)'
-            }
-          }
-        );
-        
-        if (response.ok) {
-          const data = await response.json();
-          const rawMessage = data.properties?.rawMessage;
-          const timestamp = data.properties?.timestamp;
-          
-          if (rawMessage) {
-            const pressure = parsePressureFromMetar(rawMessage);
-            pressures[station.toLowerCase()] = pressure;
-            console.log(`${station} pressure: ${pressure} mb from ${rawMessage.substring(0, 50)}...`);
-          }
-          
-          if (timestamp && timestamp > latestTimestamp) {
-            latestTimestamp = timestamp;
-          }
-        } else {
-          console.warn(`Failed to fetch ${station} data: ${response.status}`);
-          pressures[station.toLowerCase()] = null;
-        }
-      } catch (error) {
-        console.error(`Error fetching ${station} data:`, error);
-        pressures[station.toLowerCase()] = null;
-      }
-    }
-    
-    return {
-      ksfo: pressures.ksfo,
-      kacv: pressures.kacv,
-      ksmf: pressures.ksmf,
-      dataSource: 'NWS METAR (Latest Observations)',
-      timestamp: latestTimestamp || new Date().toISOString()
-    };
-    
-  } catch (error) {
-    console.error('Error fetching pressure data:', error);
-    throw error;
-  }
 };
 
 // Fetch METAR observations from NWS API

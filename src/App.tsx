@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye, Moon, Globe, RefreshCw, Wifi } from 'lucide-react';
-import { fetchKSFOTemperatureData, fetchPressureData, formatTimestamp, type TemperatureData, type PressureData } from './utils/nwsApi';
+import { fetchKSFOTemperatureData, formatTimestamp, type TemperatureData } from './utils/nwsApi';
 
 // SFO coordinates for sunrise calculation
 const SFO_LAT = 37.6213;
@@ -78,9 +78,6 @@ function App() {
   const [temperatureData, setTemperatureData] = useState<TemperatureData | null>(null);
   const [isLoadingTemps, setIsLoadingTemps] = useState<boolean>(false);
   const [tempDataError, setTempDataError] = useState<string | null>(null);
-  const [pressureData, setPressureData] = useState<PressureData | null>(null);
-  const [isLoadingPressure, setIsLoadingPressure] = useState(false);
-  const [pressureError, setPressureError] = useState<string | null>(null);
 
   // Calculate sunrise time for SFO
   const getSunriseTime = () => {
@@ -141,33 +138,9 @@ function App() {
     }
   };
 
-  const fetchPressureDataFromAPI = async () => {
-    setIsLoadingPressure(true);
-    setPressureError(null);
-    try {
-      const data = await fetchPressureData();
-      setPressureData(data);
-      
-      // Auto-populate the pressure fields
-      if (data.ksfo !== null) setSfoMb(data.ksfo.toString());
-      if (data.kacv !== null) setAcvMb(data.kacv.toString());
-      if (data.ksmf !== null) setSmfMb(data.ksmf.toString());
-      
-    } catch (error) {
-      setPressureError(error instanceof Error ? error.message : 'Failed to fetch pressure data');
-    } finally {
-      setIsLoadingPressure(false);
-    }
-  };
-
   // Load temperature data on component mount
   useEffect(() => {
     loadTemperatureData();
-  }, []);
-
-  // Auto-fetch pressure data on component mount
-  useEffect(() => {
-    fetchPressureDataFromAPI();
   }, []);
 
   useEffect(() => {
