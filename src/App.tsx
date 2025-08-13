@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye, Moon, Globe, RefreshCw, Wifi } from 'lucide-react';
 import { fetchKSFOTemperatureData, formatTimestamp, type TemperatureData } from './utils/nwsApi';
+import { calculatePressureGradient, type PressureGradientResult } from './utils/pressureGradient';
 
 // SFO coordinates for sunrise calculation
 const SFO_LAT = 37.6213;
@@ -78,6 +79,9 @@ function App() {
   const [temperatureData, setTemperatureData] = useState<TemperatureData | null>(null);
   const [isLoadingTemps, setIsLoadingTemps] = useState<boolean>(false);
   const [tempDataError, setTempDataError] = useState<string | null>(null);
+  const [pressureGradientData, setPressureGradientData] = useState<PressureGradientResult | null>(null);
+  const [isLoadingPressure, setIsLoadingPressure] = useState(false);
+  const [pressureError, setPressureError] = useState<string | null>(null);
 
   // Calculate sunrise time for SFO
   const getSunriseTime = () => {
@@ -142,6 +146,22 @@ function App() {
   useEffect(() => {
     loadTemperatureData();
   }, []);
+
+  // Fetch pressure gradient data
+  const fetchPressureData = async () => {
+    setIsLoadingPressure(true);
+    setPressureError(null);
+    try {
+      const data = await calculatePressureGradient();
+      setPressureGradientData(data);
+      // Auto-populate the pressure gradient field
+      setPressureGradient(data.gradient);
+    } catch (error) {
+      setPressureError(error instanceof Error ? error.message : 'Failed to fetch pressure data');
+    } finally {
+      setIsLoadingPressure(false);
+    }
+  };
 
   useEffect(() => {
     if (darkMode) {
@@ -745,14 +765,37 @@ function App() {
 
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Minimum Afternoon Dewpoint °F
-                </label>
-                <input
-                  type="number"
-                  value={afternoonDewpoint}
-                  onChange={(e) => setAfternoonDewpoint(parseFloat(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={pressureGradient}
+                    onChange={(e) => setPressureGradient(parseFloat(e.target.value) || 0)}
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+                    placeholder="e.g., -0.5"
+                  />
+                  <button
+                    onClick={fetchPressureData}
+                    disabled={isLoadingPressure}
+                    className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isLoadingPressure ? 'animate-spin' : ''}`} />
+                    Auto
+                  </button>
+                </div>
+                {pressureGradientData && (
+                  <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                    <div>Source: {pressureGradientData.dataSource}</div>
+                    <div>Stations: {pressureGradientData.locations.join(', ')}</div>
+                    <div>Updated: {formatTimestamp(pressureGradientData.timestamp)}</div>
+                  </div>
+                )}
+                {pressureError && (
+                  <div className="mt-1 text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    {pressureError}
+                  </div>
+                )}
                 {afternoonDewpoint < 42 && (
                   <p className="text-red-600 text-sm mt-1">⚠️ Below 42°F makes stratus improbable</p>
                 )}
