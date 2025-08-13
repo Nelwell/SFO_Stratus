@@ -20,6 +20,14 @@ export interface TemperatureData {
   timestamp: string;
 }
 
+export interface PressureData {
+  acv: number | null;
+  sfo: number | null;
+  smf: number | null;
+  dataSource: string;
+  timestamp: string;
+}
+
 // Convert Celsius to Fahrenheit
 const celsiusToFahrenheit = (celsius: number): number => {
   return Math.round((celsius * 9/5) + 32);
@@ -163,4 +171,105 @@ export const formatTimestamp = (timestamp: string): string => {
   const hours = date.getUTCHours().toString().padStart(2, '0');
   const minutes = date.getUTCMinutes().toString().padStart(2, '0');
   return `${hours}${minutes}Z`;
+};
+
+// Parse SLP (Sea Level Pressure) from METAR remarks
+const parseSLPFromRemarks = (rawMetar: string): number | null => {
+  if (!rawMetar) return null;
+  
+  // Look for RMK section
+  const rmkIndex = rawMetar.indexOf('RMK');
+  if (rmkIndex === -1) return null;
+  
+  const remarks = rawMetar.substring(rmkIndex);
+  
+  // Parse SLP from remarks: SLP followed by 3 digits (e.g., SLP146 = 1014.6 mb)
+  const slpMatch = remarks.match(/SLP(\d{3})/);
+  if (slpMatch) {
+    const slpValue = parseInt(slpMatch[1]);
+    // Convert to millibars: if < 500, add 1000; if >= 500, add 900
+    return slpValue < 500 ? 1000 + (slpValue / 10) : 900 + (slpValue / 10);
+  }
+  
+  return null;
+};
+
+// Fetch pressure data from multiple stations
+export const fetchPressureData = async (): Promise<PressureData> => {
+  const stations = ['ACV', 'KSFO', 'SMF'];
+  const pressureData: { [key: string]: number | null } = {
+    acv: null,
+    sfo: null,
+    smf: null
+  };
+  
+  let latestTimestamp = '';
+  
+  try {
+    // Fetch data from all three stations
+    const promises = stations.map(async (station) => {
+      try {
+        const stationCode = station === 'KSFO' ? 'KSFO' : `K${station}`;
+        const response = await fetch(
+          `https://api.weather.gov/stations/${stationCode}/observations?limit=10`,
+          {
+            headers: {
+              'User-Agent': 'SFO-Stratus-Tool/1.0 (Weather Forecasting Application)'
+            }
+          }
+        );
+        
+        if (!response.ok) {
+          console.warn(`Failed to fetch data for ${station}: ${response.status}`);
+          return { station, pressure: null, timestamp: '' };
+        }
+        
+        const data = await response.json();
+        const observations = data.features || [];
+        
+        // Look for the most recent observation with SLP data
+        for (const obs of observations) {
+          const rawMessage = obs.properties.rawMessage;
+          const slp = parseSLPFromRemarks(rawMessage);
+          
+          if (slp !== null) {
+            return {
+              station,
+              pressure: Math.round(slp * 10) / 10, // Round to 1 decimal place
+              timestamp: obs.properties.timestamp
+            };
+          }
+        }
+        
+        return { station, pressure: null, timestamp: '' };
+      } catch (error) {
+        console.warn(`Error fetching ${station} data:`, error);
+        return { station, pressure: null, timestamp: '' };
+      }
+    });
+    
+    const results = await Promise.all(promises);
+    
+    // Process results
+    results.forEach(result => {
+      const stationKey = result.station.toLowerCase().replace('k', '');
+      pressureData[stationKey] = result.pressure;
+      
+      if (result.timestamp > latestTimestamp) {
+        latestTimestamp = result.timestamp;
+      }
+    });
+    
+    return {
+      acv: pressureData.acv,
+      sfo: pressureData.sfo,
+      smf: pressureData.smf,
+      dataSource: 'NWS METAR (ACV/SFO/SMF)',
+      timestamp: latestTimestamp || new Date().toISOString()
+    };
+    
+  } catch (error) {
+    console.error('Error fetching pressure data:', error);
+    throw error;
+  }
 };
