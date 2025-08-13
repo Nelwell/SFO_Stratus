@@ -87,6 +87,15 @@ const isIn20to23ZWindow = (timestamp: string): boolean => {
   return utcHour >= 20 && utcHour <= 23;
 };
 
+// Check if this is an hourly METAR (issued at 53-59 minutes past the hour)
+const isHourlyMetar = (timestamp: string): boolean => {
+  const obsTime = new Date(timestamp);
+  const minutes = obsTime.getUTCMinutes();
+  
+  // Hourly METARs are typically issued at 53-59 minutes past the hour
+  return minutes >= 53 && minutes <= 59;
+};
+
 // Get the date string for the most recent 20Z period for display
 const getMostRecent20ZDateString = (): string => {
   const now = new Date();
@@ -141,10 +150,15 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
       throw new Error('No observations available');
     }
     
-    // Filter observations for 20Z-23Z window
-    const relevantObs = observations.filter(obs => isIn20to23ZWindow(obs.timestamp));
+    // Filter observations for 20Z-23Z window AND only hourly METARs
+    const relevantObs = observations.filter(obs => 
+      isIn20to23ZWindow(obs.timestamp) && isHourlyMetar(obs.timestamp)
+    );
     
-    console.log(`Found ${relevantObs.length} observations in 20Z-23Z window`);
+    console.log(`Found ${relevantObs.length} hourly observations in 20Z-23Z window`);
+    relevantObs.forEach(obs => {
+      console.log(`  - ${formatTimestamp(obs.timestamp)}: ${obs.rawMessage?.substring(0, 50)}...`);
+    });
     
     let maxTemp: number | null = null;
     let maxDewpoint: number | null = null;
