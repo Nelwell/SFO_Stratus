@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye, Moon, Globe, RefreshCw, Wifi } from 'lucide-react';
-import { fetchKSFOTemperatureData, formatTimestamp, type TemperatureData } from './utils/nwsApi';
+import { fetchKSFOTemperatureData, fetchAllStationPressureData, type TemperatureData, type PressureData } from './utils/nwsApi';
 
 // SFO coordinates for sunrise calculation
 const SFO_LAT = 37.6213;
@@ -78,6 +78,10 @@ function App() {
   const [temperatureData, setTemperatureData] = useState<TemperatureData | null>(null);
   const [isLoadingTemps, setIsLoadingTemps] = useState<boolean>(false);
   const [tempDataError, setTempDataError] = useState<string | null>(null);
+  const [pressureData, setPressureData] = useState<{acv: PressureData; sfo: PressureData; smf: PressureData} | null>(null);
+  const [isLoadingPressure, setIsLoadingPressure] = useState(false);
+  const [pressureError, setPressureError] = useState<string | null>(null);
+  const [lastPressureUpdate, setLastPressureUpdate] = useState<string>('');
 
   // Calculate sunrise time for SFO
   const getSunriseTime = () => {
@@ -137,6 +141,34 @@ function App() {
       setIsLoadingTemps(false);
     }
   };
+
+  // Fetch pressure data
+  const fetchPressureData = async () => {
+    setIsLoadingPressure(true);
+    setPressureError(null);
+    
+    try {
+      const data = await fetchAllStationPressureData();
+      setPressureData(data);
+      
+      // Auto-fill the pressure fields
+      setAcvPressure(data.acv.pressure?.toString() || '');
+      setSfoPressure(data.sfo.pressure?.toString() || '');
+      setSmfPressure(data.smf.pressure?.toString() || '');
+      
+      setLastPressureUpdate(new Date().toLocaleTimeString());
+    } catch (error) {
+      setPressureError(error instanceof Error ? error.message : 'Failed to fetch pressure data');
+      console.error('Pressure fetch error:', error);
+    } finally {
+      setIsLoadingPressure(false);
+    }
+  };
+
+  // Auto-fetch pressure data on component mount
+  useEffect(() => {
+    fetchPressureData();
+  }, []);
 
   // Load temperature data on component mount
   useEffect(() => {
