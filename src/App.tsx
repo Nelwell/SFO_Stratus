@@ -70,7 +70,7 @@ function App() {
   });
   const [burnOff, setBurnOff] = useState<BurnOffData>({
     base: 800,
-    top: 1700
+    top: 1700,
   };
 
   const [ksfo, setKsfo] = useState<string>('');
