@@ -72,14 +72,19 @@ const isIn20to00ZWindow = (timestamp: string): boolean => {
   const utcHour = obsTime.getUTCHours();
   const utcMinute = obsTime.getUTCMinutes();
   
-  // 20Z observation (usually 1955Z) through 00Z observation (usually 2355Z previous day)
-  // This covers hours 20, 21, 22, 23 (which is 00Z next day)
-  if (utcHour >= 20 && utcHour <= 23) {
+  // 20Z observation (usually 1955Z) through 00Z observation (usually 2355Z)
+  // This covers hours 20, 21, 22, 23
+  if (utcHour >= 20 || utcHour <= 23) {
     return true;
   }
   
-  // Also include observations just before 20Z (like 1955Z for 20Z METAR)
-  if (utcHour === 19 && utcMinute >= 50) {
+  // Include observations just before 20Z (like 1955Z for 20Z METAR)
+  if (utcHour === 19 && utcMinute >= 55) {
+    return true;
+  }
+  
+  // Include observations just before 00Z (like 2355Z for 00Z METAR)
+  if (utcHour === 23 && utcMinute >= 55) {
     return true;
   }
   
@@ -89,17 +94,19 @@ const isIn20to00ZWindow = (timestamp: string): boolean => {
 // Get the date string for the most recent 20Z period for display
 const getMostRecent20ZDateString = (): string => {
   const now = new Date();
-  const currentHour = now.getUTCHours();
+  const utcHour = now.getUTCHours();
   
-  const targetDate = new Date(now);
-  if (currentHour < 20) {
-    // Use yesterday's 20Z
-    targetDate.setUTCDate(targetDate.getUTCDate() - 1);
+  // Find the most recent 20Z period
+  let targetDate = new Date(now);
+  if (utcHour < 20) {
+    // If before 20Z today, use yesterday's 20Z-00Z period
+    targetDate.setUTCDate(now.getUTCDate() - 1);
   }
   
-  targetDate.setUTCHours(20, 0, 0, 0);
-  const dateStr = String(targetDate.getUTCDate()).padStart(2, '0');
-  return `${dateStr}20Z-${String(targetDate.getUTCDate() + 1).padStart(2, '0')}00Z`;
+  const startDate = targetDate.getUTCDate();
+  const endDate = (targetDate.getUTCDate() + 1) % 32; // Handle month rollover roughly
+  
+  return `${String(startDate).padStart(2, '0')}20Z-${String(endDate).padStart(2, '0')}00Z`;
 };
 
 // Fetch METAR observations from NWS API
@@ -135,39 +142,43 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
     // Filter observations for 20Z-00Z window
     const relevantObs = observations.filter(obs => isIn20to00ZWindow(obs.timestamp));
     
+    console.log(`Found ${relevantObs.length} observations in 20Z-00Z window`);
+    
     let maxTemp: number | null = null;
     let maxDewpoint: number | null = null;
     let latestTimestamp = '';
     
     // Process each observation in the 20-00Z window
     for (const obs of relevantObs) {
+      console.log(`Processing obs at ${formatTimestamp(obs.timestamp)}: ${obs.rawMessage?.substring(0, 50)}...`);
+      
       // Try to get max temp from remarks first
       const remarksData = parseMaxFromRemarks(obs.rawMessage || '');
       
       if (remarksData.maxTemp !== null) {
-        maxTemp = Math.max(maxTemp || -999, remarksData.maxTemp);
+        console.log(`Found remarks temp: ${remarksData.maxTemp}F`);
+        maxTemp = maxTemp === null ? remarksData.maxTemp : Math.max(maxTemp, remarksData.maxTemp);
       }
       
-      // For dewpoint, use the highest current dewpoint observed in the window
-      // since METAR remarks don't typically include max dewpoint
-      const currentDewpoint = getCurrentDewpoint(obs);
-      if (currentDewpoint !== null) {
-        maxDewpoint = Math.max(maxDewpoint || -999, currentDewpoint);
+      if (remarksData.maxDewpoint !== null) {
+        console.log(`Found remarks dewpoint: ${remarksData.maxDewpoint}F`);
+        maxDewpoint = maxDewpoint === null ? remarksData.maxDewpoint : Math.max(maxDewpoint, remarksData.maxDewpoint);
+      }
+      
+      // Also check current observation values as backup
+      if (obs.temperature?.value !== undefined) {
+        const tempF = celsiusToFahrenheit(obs.temperature.value);
+        maxTemp = maxTemp === null ? tempF : Math.max(maxTemp, tempF);
+      }
+      
+      if (obs.dewpoint?.value !== undefined) {
+        const dewF = celsiusToFahrenheit(obs.dewpoint.value);
+        maxDewpoint = maxDewpoint === null ? dewF : Math.max(maxDewpoint, dewF);
       }
       
       // Keep track of latest timestamp
       if (obs.timestamp > latestTimestamp) {
         latestTimestamp = obs.timestamp;
-      }
-    }
-    
-    // Fallback: if no remarks data, use regular temperature observations
-    if (maxTemp === null) {
-      for (const obs of relevantObs) {
-        if (obs.temperature?.value !== undefined) {
-          const tempF = celsiusToFahrenheit(obs.temperature.value);
-          maxTemp = Math.max(maxTemp || -999, tempF);
-        }
       }
     }
     
