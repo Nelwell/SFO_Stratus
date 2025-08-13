@@ -117,9 +117,9 @@ const getMostRecent20ZDateString = (): string => {
 // Fetch METAR observations from NWS API
 export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
   try {
-    // Get last 24 hours of observations to ensure we capture 20-24Z window
+    // Get 24 hours worth of observations (5min intervals = 12 per hour × 24 hours = 288, but use more to be safe)
     const response = await fetch(
-      'https://api.weather.gov/stations/KSFO/observations?limit=30',
+      'https://api.weather.gov/stations/KSFO/observations?limit=500',
       {
         headers: {
           'User-Agent': 'SFO-Stratus-Tool/1.0 (Weather Forecasting Application)'
