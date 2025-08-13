@@ -96,22 +96,22 @@ const isHourlyMetar = (timestamp: string): boolean => {
   return minutes >= 53 && minutes <= 59;
 };
 
-// Get the date string for the most recent 19Z period for display
-const getMostRecent19ZDateString = (): string => {
+// Get the date string for the most recent 20Z period for display
+const getMostRecent20ZDateString = (): string => {
   const now = new Date();
   const utcHour = now.getUTCHours();
   
-  // Find the most recent 19Z period
+  // Find the most recent 20Z period
   let targetDate = new Date(now);
-  if (utcHour < 19) {
-    // If before 19Z today, use yesterday's 19Z-23Z period
+  if (utcHour < 20) {
+    // If before 20Z today, use yesterday's 20Z-24Z period
     targetDate.setUTCDate(now.getUTCDate() - 1);
   }
   
   const startDate = targetDate.getUTCDate();
   const endDate = targetDate.getUTCDate(); // Same day since we're not crossing midnight
   
-  return `${String(startDate).padStart(2, '0')}19Z-${String(endDate).padStart(2, '0')}23Z`;
+  return `${String(startDate).padStart(2, '0')}20Z-${String(endDate).padStart(2, '0')}24Z`;
 };
 
 // Fetch METAR observations from NWS API
@@ -201,7 +201,7 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
     return {
       maxTemp,
       maxDewpoint,
-      dataSource: `NWS METAR (KSFO) 19Z-23Z window`,
+      dataSource: `NWS METAR (KSFO) 20Z-24Z window`,
       timestamp: latestTimestamp || new Date().toISOString()
     };
     
