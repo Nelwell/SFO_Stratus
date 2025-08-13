@@ -85,6 +85,7 @@ function App() {
   const [pressureLoading, setPressureLoading] = useState(false);
   const [pressureData, setPressureData] = useState<{acv: PressureData; sfo: PressureData; smf: PressureData} | null>(null);
   const [isLoadingPressure, setIsLoadingPressure] = useState(false);
+  const [sfoPressure, setSfoPressure] = useState<number | null>(null);
   const [pressureError, setPressureError] = useState<string | null>(null);
   const [lastPressureUpdate, setLastPressureUpdate] = useState<string>('');
 
