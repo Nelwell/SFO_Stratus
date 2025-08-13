@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Eye, Moon, Globe, RefreshCw, Wifi } from 'lucide-react';
 import { fetchKSFOTemperatureData, formatTimestamp, type TemperatureData } from './utils/nwsApi';
+import { fetchPressureGradientData, formatPressureTimestamp, type PressureGradientData } from './utils/pressureApi';
 
 // SFO coordinates for sunrise calculation
 const SFO_LAT = 37.6213;
@@ -78,6 +79,9 @@ function App() {
   const [temperatureData, setTemperatureData] = useState<TemperatureData | null>(null);
   const [isLoadingTemps, setIsLoadingTemps] = useState<boolean>(false);
   const [tempDataError, setTempDataError] = useState<string | null>(null);
+  const [pressureData, setPressureData] = useState<PressureGradientData | null>(null);
+  const [isLoadingPressure, setIsLoadingPressure] = useState(false);
+  const [pressureError, setPressureError] = useState<string | null>(null);
 
   // Calculate sunrise time for SFO
   const getSunriseTime = () => {
@@ -138,9 +142,27 @@ function App() {
     }
   };
 
+  const loadPressureData = async () => {
+    setIsLoadingPressure(true);
+    setPressureError(null);
+    try {
+      const data = await fetchPressureGradientData();
+      setPressureData(data);
+    } catch (error) {
+      setPressureError(error instanceof Error ? error.message : 'Failed to load pressure data');
+    } finally {
+      setIsLoadingPressure(false);
+    }
+  };
+
   // Load temperature data on component mount
   useEffect(() => {
     loadTemperatureData();
+  }, []);
+
+  // Auto-load pressure data on component mount
+  useEffect(() => {
+    loadPressureData();
   }, []);
 
   useEffect(() => {
@@ -476,7 +498,24 @@ function App() {
 
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Input Panels */}
+              <button
+                onClick={loadPressureData}
+                disabled={isLoadingPressure}
+                className="p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-50"
+                title="Refresh pressure data"
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoadingPressure ? 'animate-spin' : ''}`} />
+              </button>
           <div className="lg:col-span-2 space-y-6">
+            
+            {pressureError && (
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
+                  <AlertCircle className="w-4 h-4" />
+                  <span className="text-sm">{pressureError}</span>
+                </div>
+              </div>
+            )}
             
             {/* Stratus Index */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
@@ -498,81 +537,74 @@ function App() {
               {temperatureData && (
                 <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/30 rounded-lg transition-colors duration-300">
                   <div className="flex items-center gap-2 text-sm text-green-800 dark:text-green-300">
-                    <Wifi className="h-4 w-4" />
+                  Offshore (ACV - SFO) <span className={`font-semibold ${
+                    pressureData ? (pressureData.currentOffshore >= 0 ? 'text-red-600' : 'text-green-600') : 'text-gray-500'
+                  }`}>
+                    {pressureData ? `${pressureData.currentOffshore > 0 ? '+' : ''}${pressureData.currentOffshore}mb` : '--'}
+                  </span>
                     <span className="font-medium">Auto-populated from {temperatureData.dataSource}</span>
                   </div>
                   <div className="text-xs text-green-700 dark:text-green-400 mt-1">
                     Last updated: {formatTimestamp(temperatureData.timestamp)}
-                  </div>
-                  {temperatureData.maxTemp !== null && (
-                    <div className="text-xs text-green-700 dark:text-green-400">
-                      Max Temp: {temperatureData.maxTemp}°F | Max Dewpoint: {temperatureData.maxDewpoint || 'N/A'}°F
+                    <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white">
+                      {pressureData ? pressureData.stations.ACV.current : '--'}
                     </div>
-                  )}
-                </div>
               )}
               
               {tempDataError && (
-                <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg transition-colors duration-300">
-                  <div className="flex items-center gap-2 text-sm text-yellow-800 dark:text-yellow-300">
-                    <AlertTriangle className="h-4 w-4" />
-                    <span className="font-medium">Unable to fetch live data</span>
-                  </div>
-                  <div className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
-                    {tempDataError} - Using manual input
+                    <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white">
+                      {pressureData ? pressureData.stations.SFO.current : '--'}
+                    </div>
                   </div>
                 </div>
               )}
               
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Max Temperature (20-24Z) °F {temperatureData?.maxTemp && <span className="text-green-600 text-xs">(Auto)</span>}
-                  </label>
-                  <input
-                    type="number"
+                  <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white">
+                    {pressureData ? `${pressureData.trend24hOffshore > 0 ? '+' : ''}${pressureData.trend24hOffshore}` : '--'}
+                  </div>
                     value={maxTemp}
                     onChange={(e) => setMaxTemp(parseFloat(e.target.value))}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Onshore (SFO - SMF) <span className={`font-semibold ${
+                    pressureData ? (pressureData.currentOnshore >= 0 ? 'text-red-600' : 'text-green-600') : 'text-gray-500'
+                  }`}>
+                    {pressureData ? `${pressureData.currentOnshore > 0 ? '+' : ''}${pressureData.currentOnshore}mb` : '--'}
+                  </span>
                     Max Dewpoint (20-24Z) °F {temperatureData?.maxDewpoint && <span className="text-green-600 text-xs">(Auto)</span>}
                   </label>
                   <input
                     type="number"
-                    value={maxDewpoint}
-                    onChange={(e) => setMaxDewpoint(parseFloat(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                  />
-                </div>
-              </div>
-              <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg transition-colors duration-300">
+                    <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white">
+                      {pressureData ? pressureData.stations.SFO.current : '--'}
+                    </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-green-600 font-medium">SI &gt; 22: Low Probability (20%)</span>
                   <span className="text-red-600 font-medium">SI &lt; 13: High Probability (90%)</span>
-                </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2 mt-2">
-                  <div 
-                    className={`h-2 rounded-full transition-all duration-300 ${
-                      si < 13 ? 'bg-red-500' : si > 22 ? 'bg-green-500' : 'bg-yellow-500'
-                    }`}
-                    style={{ width: `${Math.max(0, Math.min(100, ((30 - si) / 23) * 100))}%` }}
+                    <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white">
+                      {pressureData ? pressureData.stations.SMF.current : '--'}
+                    </div>
                   ></div>
                 </div>
                 <div className="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600 dark:text-gray-400">SI Onset:</span>
-                    <span className="font-medium text-gray-800 dark:text-gray-200">{formatTime(getSITiming(si).start)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600 dark:text-gray-400">SI End:</span>
-                    <span className="font-medium text-gray-800 dark:text-gray-200">{formatTime(getSITiming(si).end)}</span>
+                  <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white">
+                    {pressureData ? `${pressureData.trend24hOnshore > 0 ? '+' : ''}${pressureData.trend24hOnshore}` : '--'}
                   </div>
                 </div>
               </div>
             </div>
+
+            {pressureData && (
+              <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                Last updated: {formatPressureTimestamp(pressureData.lastUpdated)} | 
+                Data from: ACV {formatPressureTimestamp(pressureData.stations.ACV.timestamp)}, 
+                SFO {formatPressureTimestamp(pressureData.stations.SFO.timestamp)}, 
+                SMF {formatPressureTimestamp(pressureData.stations.SMF.timestamp)}
+              </div>
+            )}
 
             {/* Pressure Gradients */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
@@ -937,7 +969,8 @@ function App() {
                   <strong>Estimated SCT Time:</strong> {calculateBurnOffTime(burnOff.base, burnOff.top)} hours after sunrise
                   <br />
                   <strong>Burn Rate:</strong> ~200 ft/hr | <strong>Thickness:</strong> {burnOff.top - burnOff.base}ft
-                </p>
+                <span className="text-blue-600 font-medium">ON ≥ 3.6mb:</span> Increases stratus likelihood | 
+                <span className="text-blue-600 font-medium"> OFF ≤ -3.4mb:</span> Decreases stratus likelihood
               </div>
             </div>
           </div>
