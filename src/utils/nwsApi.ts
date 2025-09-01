@@ -119,7 +119,7 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
   try {
     // Get 24 hours worth of observations (5min intervals = 12 per hour × 24 hours = 288, but use more to be safe)
     const response = await fetch(
-      'https://api.weather.gov/stations/KSFO/observations?limit=350',
+      'https://api.weather.gov/stations/KSFO/observations?limit=290',
       {
         headers: {
           'User-Agent': 'SFO-Stratus-Tool/1.0 (Weather Forecasting Application)'
