@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Moon, Globe, RefreshCw, Wifi } from 'lucide-react';
 import { fetchKSFOTemperatureData, formatTimestamp, type TemperatureData } from './utils/nwsApi';
 
-// Coerce <input type="number"> values safely
-const safeFloat = (e: React.ChangeEvent<HTMLInputElement>, fallback = 0) => {
-  const n = e.currentTarget.valueAsNumber;
+// Use the element directly, not the event (prevents pooled-event nulls)
+const getFloat = (el: HTMLInputElement, fallback = 0) => {
+  const n = el.valueAsNumber;
   return Number.isFinite(n) ? n : fallback;
 };
 
-const safeInt = (e: React.ChangeEvent<HTMLInputElement>, fallback = 0) => {
-  const n = e.currentTarget.valueAsNumber;
+const getInt = (el: HTMLInputElement, fallback = 0) => {
+  const n = el.valueAsNumber;
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
 };
 
@@ -543,7 +543,7 @@ function App() {
                   <input
                     type="number"
                     value={maxTemp}
-                    onChange={(e) => setMaxTemp(safeFloat(e))}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMaxTemp(getFloat(e.currentTarget))}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
@@ -554,7 +554,7 @@ function App() {
                   <input
                     type="number"
                     value={maxDewpoint}
-                    onChange={(e) => setMaxDewpoint(safeFloat(e))}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMaxDewpoint(getFloat(e.currentTarget))}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
@@ -610,7 +610,7 @@ function App() {
                         type="number"
                         step="0.1"
                         value={offPressure.acv}
-                        onChange={(e) => setOffPressure(p => ({ ...p, acv: safeFloat(e) }))}
+                        onChange={(e) => { const v = getFloat(e.currentTarget); setOffPressure(p => ({ ...p, acv: v })); }}
                         className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                       />
                     </div>
@@ -620,7 +620,7 @@ function App() {
                         type="number"
                         step="0.1"
                         value={offPressure.sfo}
-                        onChange={(e) => setOffPressure(p => ({ ...p, sfo: safeFloat(e) }))}
+                        onChange={(e) => { const v = getFloat(e.currentTarget); setOffPressure(p => ({ ...p, sfo: v })); }}
                         className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                       />
                     </div>
@@ -631,7 +631,7 @@ function App() {
                       type="number"
                       step="0.1"
                       value={offPressure.trend24h}
-                      onChange={(e) => setOffPressure(p => ({ ...p, trend24h: safeFloat(e) }))}
+                      onChange={(e) => { const v = getFloat(e.currentTarget); setOffPressure(p => ({ ...p, trend24h: v })); }}
                       className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                     />
                   </div>
@@ -654,7 +654,7 @@ function App() {
                         type="number"
                         step="0.1"
                         value={onPressure.sfo}
-                        onChange={(e) => setOnPressure(p => ({ ...p, sfo: safeFloat(e) }))}
+                        onChange={(e) => { const v = getFloat(e.currentTarget); setOnPressure(p => ({ ...p, sfo: v })); }}
                         className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                       />
                     </div>
@@ -664,7 +664,7 @@ function App() {
                         type="number"
                         step="0.1"
                         value={onPressure.smf}
-                        onChange={(e) => setOnPressure(p => ({ ...p, smf: safeFloat(e) }))}
+                        onChange={(e) => { const v = getFloat(e.currentTarget); setOnPressure(p => ({ ...p, smf: v })); }}
                         className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                       />
                     </div>
@@ -675,7 +675,7 @@ function App() {
                       type="number"
                       step="0.1"
                       value={onPressure.trend24h}
-                      onChange={(e) => setOnPressure(p => ({ ...p, trend24h: safeFloat(e) }))}
+                      onChange={(e) => { const v = getFloat(e.currentTarget); setOnPressure(p => ({ ...p, trend24h: v })); }}
                       className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                     />
                   </div>
@@ -705,7 +705,7 @@ function App() {
                   <input
                     type="number"
                     value={baseInversion}
-                    onChange={(e) => setBaseInversion(safeInt(e))}
+                    onChange={(e) => setBaseInversion(getInt(e.currentTarget))}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                   <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
@@ -723,7 +723,7 @@ function App() {
                       max="360"
                       step="10"
                       value={wind2k.direction}
-                      onChange={(e) => setWind2k(w => ({ ...w, direction: safeInt(e) }))}
+                      onChange={(e) => { const v = getInt(e.currentTarget); setWind2k(w => ({ ...w, direction: v })); }}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                     />
                     <input
@@ -731,7 +731,7 @@ function App() {
                       min="0"
                       max="50"
                       value={wind2k.speed}
-                      onChange={(e) => setWind2k(w => ({ ...w, speed: safeInt(e) }))}
+                      onChange={(e) => { const v = getInt(e.currentTarget); setWind2k(w => ({ ...w, speed: v })); }}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                     />
                   </div>
@@ -761,7 +761,7 @@ function App() {
                 <input
                   type="number"
                   value={afternoonDewpoint}
-                  onChange={(e) => setAfternoonDewpoint(parseFloat(e.target.value))}
+                  onChange={(e) => setAfternoonDewpoint(getFloat(e.currentTarget))}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                 />
                 {afternoonDewpoint < 42 && (
@@ -926,7 +926,7 @@ function App() {
                   <input
                     type="number"
                     value={burnOff.base}
-                    onChange={(e) => setBurnOff(b => ({ ...b, base: safeInt(e) }))}
+                    onChange={(e) => { const v = getInt(e.currentTarget); setBurnOff(b => ({ ...b, base: v })); }}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
@@ -937,7 +937,7 @@ function App() {
                   <input
                     type="number"
                     value={burnOff.top}
-                    onChange={(e) => setBurnOff(b => ({ ...b, top: safeInt(e) }))}
+                    onChange={(e) => { const v = getInt(e.currentTarget); setBurnOff(b => ({ ...b, top: v })); }}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
