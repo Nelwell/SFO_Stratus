@@ -366,14 +366,25 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
     // Base conditions that prevent formation
     if (baseInversion < 500) {
       return {
-        startTime: 'No Event',
-        endTime: 'N/A',
+        noEvent: true,
+        onsetWindow: null,
+        endWindow: null,
+        burnOffHours: null,
         probability: 5,
         confidence: 'High',
         warnings: ['Base inversion below 500ft prevents stratus formation'],
         reasoning: `SI=${si.toFixed(1)}, ON=${on.toFixed(1)}mb, OFF=${off.toFixed(1)}mb, BI=${baseInversion}ft`,
         synopticEffects: synopticEffects.effects
-      };
+      };      
+      // return {
+      //   startTime: 'No Event',
+      //   endTime: 'N/A',
+      //   probability: 5,
+      //   confidence: 'High',
+      //   warnings: ['Base inversion below 500ft prevents stratus formation'],
+      //   reasoning: `SI=${si.toFixed(1)}, ON=${on.toFixed(1)}mb, OFF=${off.toFixed(1)}mb, BI=${baseInversion}ft`,
+      //   synopticEffects: synopticEffects.effects
+      // };
     }
 
     // Smooth dewpoint reduction (starts reducing at 45°F, severe reduction below 42°F)
