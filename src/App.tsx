@@ -14,8 +14,8 @@ const getInt = (el: HTMLInputElement, fallback = 0) => {
 };
 
 // SFO coordinates for sunrise calculation
-const SFO_LAT = 37.6213;
-const SFO_LON = -122.3790;
+const SFO_LAT = 37.61961;
+const SFO_LON = -122.36558;
 
 interface PressureData {
   sfo: number;
@@ -90,40 +90,98 @@ function App() {
   const [isLoadingTemps, setIsLoadingTemps] = useState<boolean>(false);
   const [tempDataError, setTempDataError] = useState<string | null>(null);
 
-  // Calculate sunrise time for SFO
-  const getSunriseTime = () => {
-    const now = new Date();
-    const year = now.getUTCFullYear();
-    const month = now.getUTCMonth() + 1;
-    const day = now.getUTCDate();
+// Returns sunrise time at SFO in Z (e.g., "1355Z")
+const getSunriseTime = (opts?: { dayOffset?: number }) => {
+  const dayOffset = opts?.dayOffset ?? 0; // use 1 for "tomorrow"
+  // Choose the date in UTC
+  const now = new Date();
+  const dt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + dayOffset));
+
+  const y = dt.getUTCFullYear();
+  const m = dt.getUTCMonth() + 1;
+  const d = dt.getUTCDate();
+
+  // Julian Day (UTC, 0h)
+  const a = Math.floor((14 - m) / 12);
+  const y2 = y - a;
+  const m2 = m + 12 * a - 3;
+  const jd = d + Math.floor((153 * m2 + 2) / 5) + 365 * y2 + Math.floor(y2 / 4) - Math.floor(y2 / 100) + Math.floor(y2 / 400) + 1721119;
+
+  // Days since J2000.0
+  const n = jd - 2451545.0;
+
+  // Mean longitude (deg) and mean anomaly (rad)
+  const Ldeg = (280.460 + 0.9856474 * n) % 360;
+  const g = ((357.528 + 0.9856003 * n) % 360) * Math.PI / 180;
+
+  // Ecliptic longitude (rad)
+  const lambda = (Ldeg + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * Math.PI / 180;
+
+  // Right ascension & declination
+  const obliq = 23.439 * Math.PI / 180; // obliquity
+  const alpha = Math.atan2(Math.cos(obliq) * Math.sin(lambda), Math.cos(lambda)); // rad
+  const delta = Math.asin(Math.sin(obliq) * Math.sin(lambda)); // rad
+
+  // Equation of Time (minutes) -- all in degrees; NO longitude here
+  const alphaDeg = (alpha * 180) / Math.PI;
+  const LdegNorm = (Ldeg + 360) % 360;
+  const eqTime = 4 * (LdegNorm - 0.0057183 - ((alphaDeg + 360) % 360));
+  // Normalize to [-20, +20]ish
+  const eqTimeNorm = ((eqTime + 720) % 1440) - 720;
+
+  // Sunrise hour angle (rad) with refraction + solar radius (~ -0.833°)
+  const lat = SFO_LAT * Math.PI / 180;
+  const h0 = (-0.833) * Math.PI / 180;
+  const cosH0 = (Math.sin(h0) - Math.sin(lat) * Math.sin(delta)) / (Math.cos(lat) * Math.cos(delta));
+  // Clamp numeric noise
+  const H0 = Math.acos(Math.min(1, Math.max(-1, cosH0))); // rad
+
+  // Solar noon (minutes from 00Z) and sunrise time
+  // Longitude term (deg): west negative; this formula handles the sign correctly
+  const solarNoonMin = 720 - 4 * SFO_LON - eqTimeNorm;           // minutes from 00Z
+  const sunriseMin = solarNoonMin - (4 * (H0 * 180 / Math.PI));   // subtract hour angle in minutes
+
+  // Convert to HHMMZ
+  const mins = ((Math.round(sunriseMin) % 1440) + 1440) % 1440; // keep in [0,1440)
+  const hh = Math.floor(mins / 60);
+  const mm = Math.floor(mins % 60);
+  return `${hh.toString().padStart(2, '0')}${mm.toString().padStart(2, '0')}Z`;
+};
+
+  // // Calculate sunrise time for SFO
+  // const getSunriseTime = () => {
+  //   const now = new Date();
+  //   const year = now.getUTCFullYear();
+  //   const month = now.getUTCMonth() + 1;
+  //   const day = now.getUTCDate();
     
-    // Julian day calculation
-    const a = Math.floor((14 - month) / 12);
-    const y = year - a;
-    const m = month + 12 * a - 3;
-    const jd = day + Math.floor((153 * m + 2) / 5) + 365 * y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) + 1721119;
+  //   // Julian day calculation
+  //   const a = Math.floor((14 - month) / 12);
+  //   const y = year - a;
+  //   const m = month + 12 * a - 3;
+  //   const jd = day + Math.floor((153 * m + 2) / 5) + 365 * y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) + 1721119;
     
-    // Solar calculations
-    const n = jd - 2451545.0;
-    const L = (280.460 + 0.9856474 * n) % 360;
-    const g = ((357.528 + 0.9856003 * n) % 360) * Math.PI / 180;
-    const lambda = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * Math.PI / 180;
+  //   // Solar calculations
+  //   const n = jd - 2451545.0;
+  //   const L = (280.460 + 0.9856474 * n) % 360;
+  //   const g = ((357.528 + 0.9856003 * n) % 360) * Math.PI / 180;
+  //   const lambda = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * Math.PI / 180;
     
-    const alpha = Math.atan2(Math.cos(23.439 * Math.PI / 180) * Math.sin(lambda), Math.cos(lambda));
-    const delta = Math.asin(Math.sin(23.439 * Math.PI / 180) * Math.sin(lambda));
+  //   const alpha = Math.atan2(Math.cos(23.439 * Math.PI / 180) * Math.sin(lambda), Math.cos(lambda));
+  //   const delta = Math.asin(Math.sin(23.439 * Math.PI / 180) * Math.sin(lambda));
     
-    const latRad = SFO_LAT * Math.PI / 180;
-    const hourAngle = Math.acos(-Math.tan(latRad) * Math.tan(delta));
+  //   const latRad = SFO_LAT * Math.PI / 180;
+  //   const hourAngle = Math.acos(-Math.tan(latRad) * Math.tan(delta));
     
-    // Time calculations
-    const eqTime = 4 * (L * Math.PI / 180 - 0.0057183 - alpha + SFO_LON * Math.PI / 180);
-    const sunriseMinutes = 720 - 4 * SFO_LON - eqTime - 4 * hourAngle * 180 / Math.PI;
+  //   // Time calculations
+  //   const eqTime = 4 * (L * Math.PI / 180 - 0.0057183 - alpha + SFO_LON * Math.PI / 180);
+  //   const sunriseMinutes = 720 - 4 * SFO_LON - eqTime - 4 * hourAngle * 180 / Math.PI;
     
-    const sunriseHours = Math.floor(sunriseMinutes / 60) % 24;
-    const sunriseMin = Math.floor(sunriseMinutes % 60);
+  //   const sunriseHours = Math.floor(sunriseMinutes / 60) % 24;
+  //   const sunriseMin = Math.floor(sunriseMinutes % 60);
     
-    return `${sunriseHours.toString().padStart(2, '0')}${sunriseMin.toString().padStart(2, '0')}Z`;
-  };
+  //   return `${sunriseHours.toString().padStart(2, '0')}${sunriseMin.toString().padStart(2, '0')}Z`;
+  // };
 
   // Fetch temperature data from NWS API
   const loadTemperatureData = async () => {
