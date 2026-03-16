@@ -222,7 +222,8 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
 
   const calculateSI = () => maxTemp - maxDewpoint;
   const calculateON = () => onPressure.sfo - onPressure.smf;
-  const calculateOFF = () => offPressure.acv - offPressure.sfo;
+  // OFF = SFO − ACV (study convention). Negative = offshore pattern (ACV > SFO).
+  const calculateOFF = () => offPressure.sfo - offPressure.acv;
 
   const getSITiming = (si: number) => {
     const timingTable = [
@@ -421,18 +422,22 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
       warnings.push(`Onshore gradient (${on.toFixed(1)}mb) ${on < monthlyThresh.onMin ? 'below' : 'near'} ${monthlyThresh.onMin}mb ${month} threshold`);
     }
 
-    // Smooth monthly threshold checks for offshore gradient (note: offMax is negative)
-    if (off > monthlyThresh.offMax - 0.5) {
+    // Smooth monthly threshold checks for offshore gradient
+    // OFF = SFO − ACV: negative = offshore. offMax is negative (e.g., -6.0).
+    // More negative off = stronger offshore = less stratus.
+    // Buffer zone starts 0.5mb above offMax (less negative side).
+    if (off <= monthlyThresh.offMax + 0.5) {
       let offFactor = 1.0;
       if (off <= monthlyThresh.offMax) {
-        // Gradual reduction in the 0.5mb buffer zone above threshold
-        offFactor = 0.2 + (0.8 * (monthlyThresh.offMax - off) / 0.5);
+        // At or beyond threshold — significant reduction (stronger offshore = less stratus)
+        offFactor = Math.max(0.05, 0.2 * Math.pow(monthlyThresh.offMax / Math.min(-0.1, off), 1.5));
       } else {
-        // More severe reduction above threshold (less negative = worse)
-        offFactor = Math.max(0.05, 0.2 * Math.pow(Math.abs(monthlyThresh.offMax) / Math.max(0.1, Math.abs(off)), 1.5));
+        // In the 0.5mb buffer zone between offMax and offMax+0.5
+        // Factor ramps from 0.2 at offMax to 1.0 at offMax+0.5
+        offFactor = 0.2 + (0.8 * (off - monthlyThresh.offMax) / 0.5);
       }
       probability *= offFactor;
-      warnings.push(`Offshore gradient (${off.toFixed(1)}mb) ${off > monthlyThresh.offMax ? 'above' : 'near'} ${monthlyThresh.offMax}mb ${month} threshold`);
+      warnings.push(`Offshore gradient (${off.toFixed(1)}mb) ${off <= monthlyThresh.offMax ? 'exceeds' : 'near'} ${monthlyThresh.offMax}mb ${month} threshold`);
     }
 
     // Pressure gradient adjustments
@@ -443,10 +448,15 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
       }
     }
 
-    if (off >= 3.4) {
+    // Offshore gradient ≤ -3.4mb decreases stratus likelihood
+    if (off <= -3.4) {
       probability *= 0.7;
+      // Positive trend = offshore weakened (off moved toward 0) → earlier return
+      // Negative trend = offshore strengthened (off moved more negative) → later return
       if (offPressure.trend24h > 0) {
-        startTime += offPressure.trend24h;
+        startTime = Math.max(1, startTime - offPressure.trend24h);
+      } else if (offPressure.trend24h < 0) {
+        startTime += Math.abs(offPressure.trend24h);
       }
     }
 
@@ -664,7 +674,7 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <h3 className="font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                    Offshore (ACV - SFO)
+                    Offshore (SFO − ACV)
                     <span className={`text-lg font-bold ${
                       calculateOFF() >= -3.0 ? 'text-red-600' :
                       calculateOFF() >= -4.0 ? 'text-orange-600' :
@@ -674,22 +684,22 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
                   </h3>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">ACV (mb)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={offPressure.acv}
-                        onChange={(e) => { const v = getFloat(e.currentTarget); setOffPressure(p => ({ ...p, acv: v })); }}
-                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                      />
-                    </div>
-                    <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SFO (mb)</label>
                       <input
                         type="number"
                         step="0.1"
                         value={offPressure.sfo}
                         onChange={(e) => { const v = getFloat(e.currentTarget); setOffPressure(p => ({ ...p, sfo: v })); }}
+                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">ACV (mb)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={offPressure.acv}
+                        onChange={(e) => { const v = getFloat(e.currentTarget); setOffPressure(p => ({ ...p, acv: v })); }}
                         className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                       />
                     </div>
