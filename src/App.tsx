@@ -273,11 +273,11 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
 
   const getMonthlyThresholds = () => {
     const thresholds = {
-      'May': { onMin: 3.5, offMax: -5.0 },
-      'June': { onMin: 3.5, offMax: -5.5 },
-      'July': { onMin: 3.5, offMax: -6.0 },
-      'August': { onMin: 3.0, offMax: -6.0 },
-      'September': { onMin: 2.5, offMax: -6.0 }
+      'May': { onMin: 3.5, offMax: -5.0, maxTempCeiling: 70 },
+      'June': { onMin: 3.5, offMax: -5.5, maxTempCeiling: 73 },
+      'July': { onMin: 3.5, offMax: -6.0, maxTempCeiling: 75 },
+      'August': { onMin: 3.0, offMax: -6.0, maxTempCeiling: 75 },
+      'September': { onMin: 2.5, offMax: -6.0, maxTempCeiling: 75 }
     };
     return thresholds[month as keyof typeof thresholds] || thresholds['July'];
   };
@@ -388,6 +388,19 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
       // };
     }
 
+    // Max temp ceiling by month (Rule #3): stratus seldom forms at night after
+    // max afternoon temp exceeds 70°F (May), 73°F (Jun), 75°F (Jul-Sep)
+    if (maxTemp > monthlyThresh.maxTempCeiling) {
+      const excessTemp = maxTemp - monthlyThresh.maxTempCeiling;
+      // Anchor probability at the ceiling SI to guarantee monotonic decrease
+      // as temp rises — eliminates SI table noise above the ceiling
+      const ceilingSI = monthlyThresh.maxTempCeiling - maxDewpoint;
+      const ceilingProb = 100 - getSITiming(ceilingSI).noCigProb;
+      const tempFactor = Math.pow(0.5, excessTemp);
+      probability = ceilingProb * tempFactor;
+      warnings.push(`Max temp (${maxTemp}°F) exceeds ${monthlyThresh.maxTempCeiling}°F ${month} ceiling by ${excessTemp}°F — nighttime stratus formation unlikely`);
+    }
+
     // Smooth dewpoint reduction (starts reducing at 45°F, severe reduction below 42°F)
     if (afternoonDewpoint < 45) {
       let dewpointFactor = 1.0;
@@ -440,24 +453,29 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
       warnings.push(`Offshore gradient (${off.toFixed(1)}mb) ${off <= monthlyThresh.offMax ? 'exceeds' : 'near'} ${monthlyThresh.offMax}mb ${month} threshold`);
     }
 
-    // Pressure gradient adjustments
+    // Pressure gradient probability adjustments (threshold-dependent)
     if (on >= 3.6) {
       probability *= 1.2;
-      if (onPressure.trend24h > 0) {
-        startTime = Math.max(1, startTime - onPressure.trend24h);
-      }
     }
-
-    // Offshore gradient ≤ -3.4mb decreases stratus likelihood
     if (off <= -3.4) {
       probability *= 0.7;
-      // Positive trend = offshore weakened (off moved toward 0) → earlier return
-      // Negative trend = offshore strengthened (off moved more negative) → later return
-      if (offPressure.trend24h > 0) {
-        startTime = Math.max(1, startTime - offPressure.trend24h);
-      } else if (offPressure.trend24h < 0) {
-        startTime += Math.abs(offPressure.trend24h);
-      }
+    }
+
+    // 24hr trend timing adjustments (Steps 6 & 7 — apply regardless of threshold)
+    // ±1 hour per full millibar change in ON or OFF
+    // ON: positive trend = onshore strengthened → earlier start
+    //     negative trend = onshore weakened → later start
+    if (onPressure.trend24h > 0) {
+      startTime = Math.max(1, startTime - onPressure.trend24h);
+    } else if (onPressure.trend24h < 0) {
+      startTime += Math.abs(onPressure.trend24h);
+    }
+    // OFF (SFO−ACV): positive trend = offshore weakened (less negative) → earlier start
+    //                 negative trend = offshore strengthened (more negative) → later start
+    if (offPressure.trend24h > 0) {
+      startTime = Math.max(1, startTime - offPressure.trend24h);
+    } else if (offPressure.trend24h < 0) {
+      startTime += Math.abs(offPressure.trend24h);
     }
 
     // Smooth base inversion effects
@@ -465,19 +483,51 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
       let inversionFactor = 1.0;
       let delayHours = 0;
       
+      // Check for strong westerly W2K that can force gap penetration
+      const isWesterlyW2K = (wind2k.direction >= 240 && wind2k.direction <= 300) && wind2k.speed >= 25;
+      // Directional effectiveness: 270° (due west) = 1.0, tapers to 0.5 at 240° and 300°
+      const dirFactor = isWesterlyW2K
+        ? 0.5 + 0.5 * Math.cos((wind2k.direction - 270) * Math.PI / 60)
+        : 0;
+      
       if (baseInversion >= 1000) {
-        // Gradual effects from 1200ft to 1000ft
-        inversionFactor = 0.8 + (0.2 * (baseInversion - 1000) / 200);
-        delayHours = 2 * (1200 - baseInversion) / 200;
+        if (isWesterlyW2K) {
+          // Strong westerly W2K overrides the marginal BI delay (San Bruno Gap penetration)
+          // Speed scales continuously from 25kt; direction modulates effectiveness
+          const speedFactor = Math.min(1.0, (wind2k.speed - 25) / 15);
+          const overrideFactor = speedFactor * dirFactor;
+          const baseInvFactor = 0.8 + (0.2 * (baseInversion - 1000) / 200);
+          const baseDelay = 2 * (1200 - baseInversion) / 200;
+          inversionFactor = baseInvFactor + (1.0 - baseInvFactor) * overrideFactor;
+          delayHours = baseDelay * (1.0 - overrideFactor);
+          warnings.push(`Strong W2K (${wind2k.direction}°/${wind2k.speed}kt) forcing gap penetration despite marginal BI (${baseInversion}ft)`);
+        } else {
+          // Gradual effects from 1200ft to 1000ft
+          inversionFactor = 0.8 + (0.2 * (baseInversion - 1000) / 200);
+          delayHours = 2 * (1200 - baseInversion) / 200;
+          warnings.push(`Low inversion height (${baseInversion}ft) delays penetration through gaps`);
+        }
       } else {
-        // More significant effects below 1000ft
-        inversionFactor = Math.max(0.4, 0.8 * Math.pow(baseInversion / 1000, 0.5));
-        delayHours = 2 + 2 * (1000 - baseInversion) / 500;
+        // More significant effects below 1000ft — strong winds help but terrain limits full override
+        if (isWesterlyW2K) {
+          const speedFactor = Math.min(1.0, (wind2k.speed - 25) / 15);
+          const windOverride = speedFactor * dirFactor;
+          // Below 1000ft, wind effectiveness reduced — scales with how far below 1000
+          const terrainLimit = 0.5 * (baseInversion / 1000); // 0.5 at 1000ft, 0.25 at 500ft
+          const overrideFactor = windOverride * terrainLimit;
+          inversionFactor = Math.max(0.4, 0.8 * Math.pow(baseInversion / 1000, 0.5));
+          inversionFactor += (1.0 - inversionFactor) * overrideFactor;
+          delayHours = (2 + 2 * (1000 - baseInversion) / 500) * (1.0 - overrideFactor);
+          warnings.push(`Strong W2K (${wind2k.direction}°/${wind2k.speed}kt) partially aids gap penetration but BI (${baseInversion}ft) significantly limits stratus`);
+        } else {
+          inversionFactor = Math.max(0.4, 0.8 * Math.pow(baseInversion / 1000, 0.5));
+          delayHours = 2 + 2 * (1000 - baseInversion) / 500;
+          warnings.push(`Low inversion height (${baseInversion}ft) significantly delays penetration through gaps`);
+        }
       }
       
       probability *= inversionFactor;
       startTime += delayHours;
-      warnings.push(`Low inversion height (${baseInversion}ft) ${baseInversion < 1000 ? 'significantly delays' : 'delays'} penetration through gaps`);
     }
 
     // Synoptic trigger effects
@@ -493,10 +543,12 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
     endTime += synopticEffects.timingAdjustment * 0.5; // End time less affected by synoptic patterns
     startTime = Math.max(1, startTime); // Ensure minimum start time of 1Z
 
-    // Wind effects
-    if ((wind2k.direction >= 240 && wind2k.direction <= 300) && wind2k.speed > 10) {
-      startTime = Math.max(1, startTime - 1);
-      probability *= 1.1;
+    // Wind effects — strong westerly W2K (≥25kt) favors earlier CIG start
+    // Effectiveness tapers from 270° (due west, max) toward 240° and 300° (min)
+    if ((wind2k.direction >= 240 && wind2k.direction <= 300) && wind2k.speed >= 25) {
+      const windDirFactor = 0.5 + 0.5 * Math.cos((wind2k.direction - 270) * Math.PI / 60);
+      startTime = Math.max(1, startTime - 1 * windDirFactor);
+      probability *= 1 + (0.1 * windDirFactor);
     }
 
     // SI confidence adjustments
@@ -763,8 +815,8 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
 
               <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg transition-colors duration-300">
                 <p className="text-sm text-blue-800 dark:text-blue-300">
-                  <strong>ON ≥ 3.6mb:</strong> Increases stratus likelihood | 
-                  <strong> OFF ≤ -3.4mb:</strong> Decreases stratus likelihood
+                  <strong>OFF ≤ -3.4mb:</strong> Significantly decreases stratus likelihood | 
+                  <strong> ON ≥ 3.6mb:</strong> Significantly increases stratus likelihood
                 </p>
               </div>
             </div>
