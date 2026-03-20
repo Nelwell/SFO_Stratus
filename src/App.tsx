@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Moon, Globe, RefreshCw, Wifi } from 'lucide-react';
+import { Cloud, Sun, Wind, Thermometer, Gauge, AlertTriangle, Clock, Moon, Globe, RefreshCw, Wifi, ChevronDown, ChevronUp } from 'lucide-react';
 import { fetchKSFOTemperatureData, formatTimestamp, type TemperatureData } from './utils/nwsApi';
 
 // Use the element directly, not the event (prevents pooled-event nulls)
@@ -83,12 +83,19 @@ function App() {
     base: 800,
     top: 1700
   });
+  const [burnOffPattern, setBurnOffPattern] = useState<'trough' | 'ridge'>('trough');
   const [month, setMonth] = useState<string>('July');
   const [afternoonDewpoint, setAfternoonDewpoint] = useState<number>(55);
+  const [drizzleObserved, setDrizzleObserved] = useState<boolean>(false);
   const [darkMode, setDarkMode] = useState<boolean>(false);
   const [temperatureData, setTemperatureData] = useState<TemperatureData | null>(null);
   const [isLoadingTemps, setIsLoadingTemps] = useState<boolean>(false);
   const [tempDataError, setTempDataError] = useState<string | null>(null);
+  const [forecastNotesExpanded, setForecastNotesExpanded] = useState<boolean>(false);
+  const [triggerRefExpanded, setTriggerRefExpanded] = useState<boolean>(false);
+  const [crossStation, setCrossStation] = useState<{
+    rdd: number; rno: number; sba: number; sbaStratusPresent: boolean;
+  }>({ rdd: 0, rno: 0, sba: 0, sbaStratusPresent: false });
 
 // Returns sunrise time at SFO in Z (e.g., "1355Z")
 const getSunriseTime = (opts?: { dayOffset?: number }) => {
@@ -282,12 +289,134 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
     return thresholds[month as keyof typeof thresholds] || thresholds['July'];
   };
 
+  // Cohen burn-off chart lookup tables
+  // Axes: base (ft) x thickness (ft) → SCT time (hours after sunrise)
+  // Derived from Cohen CWSU charts (1987-1991 trough, 1986-1988 ridge)
+  const cohenBases = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000];
+  const cohenThicknesses = [300, 600, 900, 1200, 1500, 1800, 2100];
+
+  // Trough pattern SCT times (hours after sunrise)
+  // null = data too variable / combination rarely occurs
+  const cohenTroughTable: (number | null)[][] = [
+    // base:  200   400   600   800  1000  1200  1400  1600  1800  2000
+    /* 300 */[1.5,  1.8,  2.0,  2.3,  2.7,  3.0,  3.3,  3.5,  null, null],
+    /* 600 */[3.0,  3.3,  3.5,  3.8,  4.2,  4.5,  5.0,  5.5,  6.0,  6.5],
+    /* 900 */[4.5,  4.7,  4.8,  5.0,  5.5,  6.0,  6.5,  7.0,  7.5,  8.0],
+    /*1200 */[6.0,  6.3,  6.5,  7.0,  7.5,  8.0,  8.5,  9.0,  null, null],
+    /*1500 */[7.5,  7.8,  8.0,  8.5,  9.0,  9.5,  null, null, null, null],
+    /*1800 */[9.0,  9.3,  9.5, 10.0,  null, null, null, null, null, null],
+    /*2100 */[10.0, 10.5, null, null,  null, null, null, null, null, null],
+  ];
+
+  // Ridge pattern SCT times (hours after sunrise)
+  const cohenRidgeTable: (number | null)[][] = [
+    // base:  200   400   600   800  1000  1200  1400  1600  1800  2000
+    /* 300 */[1.3,  1.5,  1.7,  2.0,  2.2,  2.5,  2.8,  3.0,  null, null],
+    /* 600 */[2.5,  2.8,  3.0,  3.3,  3.5,  3.8,  4.0,  4.3,  4.5,  5.0],
+    /* 900 */[3.8,  4.0,  4.2,  4.5,  4.8,  5.0,  5.3,  5.5,  5.8,  6.0],
+    /*1200 */[5.0,  5.3,  5.5,  5.8,  6.0,  6.3,  6.5,  7.0,  null, null],
+    /*1500 */[6.0,  6.3,  6.5,  7.0,  7.3,  7.5,  null, null, null, null],
+    /*1800 */[null, null, null, null,  null, null, null, null, null, null],
+    /*2100 */[null, null, null, null,  null, null, null, null, null, null],
+  ];
+
+  // Bilinear interpolation on Cohen chart, with fallback to ~200ft/hr estimate
+  const cohenLookup = (base: number, thickness: number, pattern: 'trough' | 'ridge') => {
+    const table = pattern === 'trough' ? cohenTroughTable : cohenRidgeTable;
+
+    // Clamp to table bounds
+    const clampedBase = Math.max(cohenBases[0], Math.min(cohenBases[cohenBases.length - 1], base));
+    const clampedThick = Math.max(cohenThicknesses[0], Math.min(cohenThicknesses[cohenThicknesses.length - 1], thickness));
+
+    // Find surrounding grid indices for base
+    let bi = 0;
+    for (let i = 0; i < cohenBases.length - 1; i++) {
+      if (clampedBase >= cohenBases[i]) bi = i;
+    }
+    const bi2 = Math.min(bi + 1, cohenBases.length - 1);
+    const bFrac = bi === bi2 ? 0 : (clampedBase - cohenBases[bi]) / (cohenBases[bi2] - cohenBases[bi]);
+
+    // Find surrounding grid indices for thickness
+    let ti = 0;
+    for (let i = 0; i < cohenThicknesses.length - 1; i++) {
+      if (clampedThick >= cohenThicknesses[i]) ti = i;
+    }
+    const ti2 = Math.min(ti + 1, cohenThicknesses.length - 1);
+    const tFrac = ti === ti2 ? 0 : (clampedThick - cohenThicknesses[ti]) / (cohenThicknesses[ti2] - cohenThicknesses[ti]);
+
+    // Get four corner values
+    const v00 = table[ti]?.[bi];
+    const v10 = table[ti]?.[bi2];
+    const v01 = table[ti2]?.[bi];
+    const v11 = table[ti2]?.[bi2];
+
+    // If all four corners are available, bilinear interpolation
+    if (v00 !== null && v10 !== null && v01 !== null && v11 !== null) {
+      const top = v00 + (v10 - v00) * bFrac;
+      const bottom = v01 + (v11 - v01) * bFrac;
+      return Math.round((top + (bottom - top) * tFrac) * 10) / 10;
+    }
+
+    // If some corners available, use nearest valid
+    const candidates = [v00, v10, v01, v11].filter(v => v !== null) as number[];
+    if (candidates.length > 0) {
+      return Math.round((candidates.reduce((a, b) => a + b, 0) / candidates.length) * 10) / 10;
+    }
+
+    // Fallback: ~200ft/hr rule of thumb
+    return Math.round((thickness / 200) * 10) / 10;
+  };
+
   const calculateBurnOffTime = (base: number, top: number) => {
-    const thickness = top - base;
-    const burnRate = 200; // ft/hr
-    const hoursToScatter = thickness / burnRate;
-    const totalHours = top / burnRate;
-    return Math.round(hoursToScatter * 10) / 10;
+    const thickness = Math.max(0, top - base);
+    if (thickness <= 0) return 0;
+    return cohenLookup(base, thickness, burnOffPattern);
+  };
+
+  // Calculate burn-off modifiers based on study's Game Plan
+  const getBurnOffModifiers = () => {
+    let adjustment = 0;
+    let modifiers: string[] = [];
+
+    // Later SCT if onshore pattern is increasing
+    if (onPressure.trend24h > 0) {
+      const delay = Math.min(2, onPressure.trend24h * 0.5);
+      adjustment += delay;
+      modifiers.push(`Increasing onshore (+${onPressure.trend24h}mb/24hr): +${delay.toFixed(1)}hr`);
+    }
+    // Earlier SCT if onshore pattern is decreasing
+    if (onPressure.trend24h < 0) {
+      const advance = Math.min(1.5, Math.abs(onPressure.trend24h) * 0.5);
+      adjustment -= advance;
+      modifiers.push(`Decreasing onshore (${onPressure.trend24h}mb/24hr): -${advance.toFixed(1)}hr`);
+    }
+
+    // Later SCT if strong westerly W2K (stratus streaming through approach zone)
+    if ((wind2k.direction >= 240 && wind2k.direction <= 300) && wind2k.speed >= 25) {
+      const delay = Math.min(2, (wind2k.speed - 25) / 15 * 1.5);
+      adjustment += delay;
+      modifiers.push(`Strong W2K (${wind2k.direction}°/${wind2k.speed}kt): +${delay.toFixed(1)}hr`);
+    }
+
+    // Later SCT if synoptic trigger present (scattered clouds persist in arrival zone)
+    if (hasTrigger()) {
+      adjustment += 1.0;
+      modifiers.push(`Synoptic trigger present: +1.0hr`);
+    }
+
+    // Later SCT if drizzle observed (Rule #5: implies ≥1,000ft thickness, rising
+    // inversion, subsequent late clearing — esp. with stronger onshore pattern)
+    if (drizzleObserved) {
+      let drizzleDelay = 1.0;
+      if (onPressure.trend24h > 0) {
+        // Compounds with increasing onshore — study says "especially with a stronger onshore pressure pattern"
+        drizzleDelay += Math.min(1.0, onPressure.trend24h * 0.5);
+      }
+      adjustment += drizzleDelay;
+      modifiers.push(`Drizzle observed (rising inversion, late clearing): +${drizzleDelay.toFixed(1)}hr`);
+    }
+
+    return { adjustment: Math.round(adjustment * 10) / 10, modifiers };
   };
 
   const hasTrigger = () => {
@@ -350,6 +479,69 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
     return { probabilityMultiplier, timingAdjustment, effects };
   };
 
+  // Cross-station gradient advisories (informational only, no calculation impact)
+  const getCrossStationAdvisories = () => {
+    const advisories: { message: string; type: 'warning' | 'info' | 'positive' }[] = [];
+    const sfo = onPressure.sfo;
+    const sac = onPressure.smf; // SAC ≈ SMF
+    const acv = offPressure.acv;
+    const { rdd, rno, sba, sbaStratusPresent } = crossStation;
+
+    // Only evaluate rules where the user has entered values (non-zero)
+    if (rdd > 0) {
+      // SFO > SAC and SAC > RDD → stratus persists all day
+      if (sfo > sac && sac > rdd) {
+        advisories.push({
+          message: `SFO (${sfo}) > SAC (${sac}) > RDD (${rdd}): Stratus will persist all day at SFO. Stratus will also persist along the northern and central California coast.`,
+          type: 'warning'
+        });
+      }
+      // SFO > SAC and RDD > SFO → seabreeze delayed
+      if (sfo > sac && rdd > sfo) {
+        advisories.push({
+          message: `SFO (${sfo}) > SAC (${sac}) but RDD (${rdd}) > SFO: Seabreeze will be delayed until late afternoon. Stratus, if any, will not spread into the bay until late night.`,
+          type: 'info'
+        });
+      }
+    }
+
+    if (rno > 0) {
+      // ACV >> SFO and RNO >> SFO (≥5mb) → clears and won't return
+      if (acv > 0 && (acv - sfo) >= 5 && (rno - sfo) >= 5) {
+        advisories.push({
+          message: `ACV (${acv}) >> SFO (${sfo}) and RNO (${rno}) >> SFO: Strong offshore flow. Stratus will clear out of the bay and not return. Coast will also clear from far N. CA south to Monterey Bay.`,
+          type: 'positive'
+        });
+      }
+      // RNO - SFO > 10mb → strong east winds
+      if ((rno - sfo) > 10) {
+        advisories.push({
+          message: `RNO − SFO = ${(rno - sfo).toFixed(1)}mb (>10mb): Strong east winds expected throughout the bay area.`,
+          type: 'warning'
+        });
+      }
+    }
+
+    if (sba > 0) {
+      // SBA > SFO and stratus in Santa Barbara Channel
+      if (sba > sfo && sbaStratusPresent) {
+        advisories.push({
+          message: `SBA (${sba}) > SFO (${sfo}) with stratus in Santa Barbara Channel: Stratus will move up to Point Arena by morning due to southerly winds.`,
+          type: 'info'
+        });
+      }
+      // SBA > SFO gradient trend transition after warm spells
+      if (sba > sfo) {
+        advisories.push({
+          message: `SBA (${sba}) > SFO (${sfo}): If this gradient has transitioned after 1–2 days of bay-area warm spells, watch for a northerly return of stratus.`,
+          type: 'info'
+        });
+      }
+    }
+
+    return advisories;
+  };
+
   const getFinalPrediction = () => {
     const si = calculateSI();
     const on = calculateON();
@@ -364,30 +556,6 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
     let confidence = 'Medium';
     let warnings = [];
 
-    // Base conditions that prevent formation
-    if (baseInversion < 500) {
-      return {
-        noEvent: true,
-        onsetWindow: null,
-        endWindow: null,
-        burnOffHours: null,
-        probability: 5,
-        confidence: 'High',
-        warnings: ['Base inversion below 500ft prevents stratus formation'],
-        reasoning: `SI=${si.toFixed(1)}, ON=${on.toFixed(1)}mb, OFF=${off.toFixed(1)}mb, BI=${baseInversion}ft`,
-        synopticEffects: synopticEffects.effects
-      };      
-      // return {
-      //   startTime: 'No Event',
-      //   endTime: 'N/A',
-      //   probability: 5,
-      //   confidence: 'High',
-      //   warnings: ['Base inversion below 500ft prevents stratus formation'],
-      //   reasoning: `SI=${si.toFixed(1)}, ON=${on.toFixed(1)}mb, OFF=${off.toFixed(1)}mb, BI=${baseInversion}ft`,
-      //   synopticEffects: synopticEffects.effects
-      // };
-    }
-
     // Max temp ceiling by month (Rule #3): stratus seldom forms at night after
     // max afternoon temp exceeds 70°F (May), 73°F (Jun), 75°F (Jul-Sep)
     if (maxTemp > monthlyThresh.maxTempCeiling) {
@@ -398,7 +566,7 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
       const ceilingProb = 100 - getSITiming(ceilingSI).noCigProb;
       const tempFactor = Math.pow(0.5, excessTemp);
       probability = ceilingProb * tempFactor;
-      warnings.push(`Max temp (${maxTemp}°F) exceeds ${monthlyThresh.maxTempCeiling}°F ${month} ceiling by ${excessTemp}°F — nighttime stratus formation unlikely`);
+      warnings.push(`Max temp (${maxTemp}°F) exceeds ${monthlyThresh.maxTempCeiling}°F ${month} ceiling by ${excessTemp}°F — stratus formation unlikely`);
     }
 
     // Smooth dewpoint reduction (starts reducing at 45°F, severe reduction below 42°F)
@@ -500,30 +668,49 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
           const baseDelay = 2 * (1200 - baseInversion) / 200;
           inversionFactor = baseInvFactor + (1.0 - baseInvFactor) * overrideFactor;
           delayHours = baseDelay * (1.0 - overrideFactor);
-          warnings.push(`Strong W2K (${wind2k.direction}°/${wind2k.speed}kt) forcing gap penetration despite marginal BI (${baseInversion}ft)`);
+          warnings.push(`Strong W2K (${wind2k.direction}°/${wind2k.speed}kt) forcing stratus through San Bruno Gap despite marginal BI (${baseInversion}ft)`);
         } else {
           // Gradual effects from 1200ft to 1000ft
           inversionFactor = 0.8 + (0.2 * (baseInversion - 1000) / 200);
           delayHours = 2 * (1200 - baseInversion) / 200;
-          warnings.push(`Low inversion height (${baseInversion}ft) delays penetration through gaps`);
+          warnings.push(`Low BI (${baseInversion}ft) delays stratus penetration — must enter through San Bruno Gap (direct to SFO) or Golden Gate (wraps south through bay, later onset)`);
         }
-      } else {
-        // More significant effects below 1000ft — strong winds help but terrain limits full override
+      } else if (baseInversion >= 500) {
+        // 500–1000ft: significant terrain blocking, gap/Golden Gate only
         if (isWesterlyW2K) {
           const speedFactor = Math.min(1.0, (wind2k.speed - 25) / 15);
           const windOverride = speedFactor * dirFactor;
-          // Below 1000ft, wind effectiveness reduced — scales with how far below 1000
-          const terrainLimit = 0.5 * (baseInversion / 1000); // 0.5 at 1000ft, 0.25 at 500ft
+          const terrainLimit = 0.5 * (baseInversion / 1000);
           const overrideFactor = windOverride * terrainLimit;
           inversionFactor = Math.max(0.4, 0.8 * Math.pow(baseInversion / 1000, 0.5));
           inversionFactor += (1.0 - inversionFactor) * overrideFactor;
           delayHours = (2 + 2 * (1000 - baseInversion) / 500) * (1.0 - overrideFactor);
-          warnings.push(`Strong W2K (${wind2k.direction}°/${wind2k.speed}kt) partially aids gap penetration but BI (${baseInversion}ft) significantly limits stratus`);
+          warnings.push(`Strong W2K (${wind2k.direction}°/${wind2k.speed}kt) partially aids penetration through San Bruno Gap but BI (${baseInversion}ft) significantly limits stratus. Golden Gate entry possible but requires wrap south through bay to reach SFO — much later onset`);
         } else {
           inversionFactor = Math.max(0.4, 0.8 * Math.pow(baseInversion / 1000, 0.5));
           delayHours = 2 + 2 * (1000 - baseInversion) / 500;
-          warnings.push(`Low inversion height (${baseInversion}ft) significantly delays penetration through gaps`);
+          warnings.push(`Low BI (${baseInversion}ft) significantly limits bay penetration — San Bruno Gap largely blocked by terrain. Primary entry via Golden Gate, but stratus must then wrap south through the bay to reach SFO terminal — expect very late onset`);
         }
+      } else {
+        // Below 500ft: stratus locked on coast side of terrain. Only path into
+        // the bay is surface advection through the Golden Gate strait, then wrapping
+        // south through the bay to reach SFO — very late onset, very unlikely.
+        // (Rule #10: stratus under 500ft CIG clears by 0930-1000 PST ~95% in July)
+        if (isWesterlyW2K) {
+          // Strong onshore flow can push fog through Golden Gate at surface level
+          const speedFactor = Math.min(1.0, (wind2k.speed - 25) / 15);
+          const overrideFactor = speedFactor * dirFactor * 0.15; // max 15% override — terrain severely limits
+          inversionFactor = Math.max(0.08, 0.15 * Math.pow(baseInversion / 500, 0.5));
+          inversionFactor += (1.0 - inversionFactor) * overrideFactor;
+          delayHours = 5 + 3 * (500 - baseInversion) / 300; // 5–8hr delay (Golden Gate → wrap → SFO)
+          delayHours *= (1.0 - overrideFactor);
+          warnings.push(`BI (${baseInversion}ft) traps stratus on coast side of terrain — only Golden Gate surface advection possible. Strong W2K (${wind2k.direction}°/${wind2k.speed}kt) may push fog through but onset at SFO will be very late as it wraps south through the bay`);
+        } else {
+          inversionFactor = Math.max(0.08, 0.15 * Math.pow(baseInversion / 500, 0.5));
+          delayHours = 5 + 3 * (500 - baseInversion) / 300;
+          warnings.push(`BI (${baseInversion}ft) traps stratus on coast side of terrain — stratus unlikely to reach SFO. Only possible path is surface advection through the Golden Gate, requiring a long wrap south through the bay to the terminal area — very late onset if it occurs at all`);
+        }
+        confidence = 'High';
       }
       
       probability *= inversionFactor;
@@ -573,13 +760,18 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
       mostProbable: roundedEndTime
     };
     
-    // Calculate burn-off time from sunrise
-    const burnOffHours = calculateBurnOffTime(burnOff.base, burnOff.top);
+    // Calculate burn-off time from sunrise with modifiers
+    const baseBurnOffHours = calculateBurnOffTime(burnOff.base, burnOff.top);
+    const burnOffMods = getBurnOffModifiers();
+    const burnOffHours = Math.max(0, Math.round((baseBurnOffHours + burnOffMods.adjustment) * 10) / 10);
     
     return {
       onsetWindow,
       endWindow,
       burnOffHours,
+      baseBurnOffHours,
+      burnOffModifiers: burnOffMods.modifiers,
+      burnOffAdjustment: burnOffMods.adjustment,
       probability: Math.round(probability),
       confidence,
       warnings,
@@ -599,17 +791,6 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
           <div className="flex items-center justify-center gap-3 mb-4">
             <Cloud className="h-8 w-8 text-blue-600 dark:text-blue-400" />
             <h1 className="text-3xl font-bold text-gray-800 dark:text-white">SFO Stratus Prediction Tool</h1>
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className="ml-4 p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200"
-              aria-label="Toggle dark mode"
-            >
-              {darkMode ? (
-                <Sun className="h-5 w-5 text-yellow-500" />
-              ) : (
-                <Moon className="h-5 w-5 text-gray-600" />
-              )}
-            </button>
           </div>
           <p className="text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
             Advanced stratus onset and burn-off prediction tool based on the Cohen-Lau methodology
@@ -840,7 +1021,7 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                   <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                    {baseInversion < 500 ? '⚠️ No formation' : baseInversion < 1000 ? '⚠️ Delayed' : '✅ Normal'}
+                    {baseInversion < 500 ? '⚠️ Coast-locked' : baseInversion < 1000 ? '⚠️ Delayed' : '✅ Normal'}
                   </p>
                 </div>
                 <div>
@@ -885,19 +1066,44 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
                 </div>
               </div>
 
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Minimum Afternoon Dewpoint °F
-                </label>
-                <input
-                  type="number"
-                  value={afternoonDewpoint}
-                  onChange={(e) => setAfternoonDewpoint(getFloat(e.currentTarget))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
-                />
-                {afternoonDewpoint < 42 && (
-                  <p className="text-red-600 text-sm mt-1">⚠️ Below 42°F makes stratus improbable</p>
-                )}
+              <div className="mt-4 grid md:grid-cols-3 gap-4 items-start">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Min Afternoon Dewpoint °F
+                  </label>
+                  <input
+                    type="number"
+                    value={afternoonDewpoint}
+                    onChange={(e) => setAfternoonDewpoint(getFloat(e.currentTarget))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                  />
+                  {afternoonDewpoint < 42 && (
+                    <p className="text-red-600 text-xs mt-1">⚠️ Below 42°F — stratus improbable</p>
+                  )}
+                </div>
+                <div className="md:col-span-2 md:mt-8">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={drizzleObserved}
+                      onChange={(e) => setDrizzleObserved(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
+                    />
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Drizzle observed from stratus</span>
+                  </label>
+                  {drizzleObserved && (
+                    <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg transition-colors duration-300">
+                      <p className="text-xs text-blue-800 dark:text-blue-300">
+                        Drizzle indicates cloud thickness ≥1,000ft with a rising inversion. Expect late clearing next day.
+                      </p>
+                      {(burnOff.top - burnOff.base) < 1000 && (burnOff.top - burnOff.base) > 0 && (
+                        <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1 font-medium">
+                          ⚠️ Entered thickness ({burnOff.top - burnOff.base}ft) is below 1,000ft — consider adjusting cloud top in the burn-off section.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -905,64 +1111,77 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors duration-300">
               <div className="flex items-center gap-2 mb-4">
                 <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Synoptic Triggers</h2>
-                {hasTrigger() && <span className="text-sm bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 px-2 py-1 rounded">Early Onset More Likely ≤03Z</span>}
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Synoptic Trigger</h2>
+                {hasTrigger() && <span className="text-sm bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 px-2 py-1 rounded">Early Onset More Likely (≤03Z)</span>}
               </div>
-              
-              <div className="grid md:grid-cols-2 gap-4">
-                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
-                  <input
-                    type="radio"
-                    name="synopticTrigger"
-                    value="deepeningTrough"
-                    checked={selectedTrigger === 'deepeningTrough'}
-                    onChange={(e) => setSelectedTrigger(e.target.checked ? e.target.value : '')}
-                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Deepening Mid-Level Trough</span>
-                </label>
-                
-                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
-                  <input
-                    type="radio"
-                    name="synopticTrigger"
-                    value="shortwaveTrough"
-                    checked={selectedTrigger === 'shortwaveTrough'}
-                    onChange={(e) => setSelectedTrigger(e.target.checked ? e.target.value : '')}
-                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Shortwave/Vorticity Maximum</span>
-                </label>
-                
-                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
-                  <input
-                    type="radio"
-                    name="synopticTrigger"
-                    value="longWaveTrough"
-                    checked={selectedTrigger === 'longWaveTrough'}
-                    onChange={(e) => setSelectedTrigger(e.target.checked ? e.target.value : '')}
-                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Long-Wave Trough (East of Bay)</span>
-                </label>
-                
-                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
-                  <input
-                    type="radio"
-                    name="synopticTrigger"
-                    value="shallowFront"
-                    checked={selectedTrigger === 'shallowFront'}
-                    onChange={(e) => setSelectedTrigger(e.target.checked ? e.target.value : '')}
-                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">Shallow Pre-Frontal Boundary</span>
-                </label>
+
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <button
+                  onClick={() => setSelectedTrigger('')}
+                  className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                    selectedTrigger === ''
+                      ? 'bg-gray-500 text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  None Identified
+                </button>
+                <button
+                  onClick={() => setSelectedTrigger('present')}
+                  className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                    selectedTrigger !== ''
+                      ? 'bg-yellow-500 text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  Trigger Present
+                </button>
               </div>
-              
-              <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg transition-colors duration-300">
-                <p className="text-sm text-yellow-800 dark:text-yellow-300">
-                  93% of early stratus onset cases (≤03Z) had one of these triggers present
+
+              {hasTrigger() && (
+                <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg transition-colors duration-300">
+                  <p className="text-sm text-yellow-800 dark:text-yellow-300">
+                    <strong>Effect:</strong> CIG onset capped at no later than 03Z (if gradients and SI support a CIG event). Probability boosted. Burn-off SCT time delayed ~1hr due to persistent scattered clouds in the arrival zone.
+                  </p>
+                </div>
+              )}
+
+              <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg transition-colors duration-300">
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-1">
+                  93% of early stratus onset cases (≤03Z) had one of these triggers present:
                 </p>
+                <button
+                  onClick={() => setTriggerRefExpanded(!triggerRefExpanded)}
+                  className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  {triggerRefExpanded ? 'Hide' : 'Show'} trigger identification guide
+                  {triggerRefExpanded ? (
+                    <ChevronUp className="h-3 w-3" />
+                  ) : (
+                    <ChevronDown className="h-3 w-3" />
+                  )}
+                </button>
+                
+                {triggerRefExpanded && (
+                  <div className="mt-3 space-y-3 text-xs text-gray-600 dark:text-gray-400">
+                    <div className="p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600">
+                      <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Deepening Mid-Level Trough</p>
+                      <p>500mb height falls ~50m in 12hrs across the eastern Pacific. Look for a vort max dropping south toward N. California, or a short wave trough off the central CA coast. Low clouds typically present along coast prior to onset. Often "all-day" low cloudiness with late afternoon partial burn-off.</p>
+                    </div>
+                    <div className="p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600">
+                      <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Shortwave / Vorticity Maximum</p>
+                      <p>SW or westerly flow forecast near the CA coast or passing through the bay area in the ensuing 12–24hrs. Can be part of a broad 500mb trough over the eastern Pacific. Similar cloud signature — all-day low clouds, afternoon partial burn-off, scattered clouds may persist in arrival zone.</p>
+                    </div>
+                    <div className="p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600">
+                      <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Long-Wave Trough (East of Bay)</p>
+                      <p>Axis just east of the bay area, expected to deepen overnight due to vort max dropping south along OR coast or immediate offshore waters. Characteristics: moist air mass, absence of temperature inversion, strong inland pressure gradient. Low clouds can patch over Santa Cruz Mtns during afternoon, increasing substantially around sunset. Most common in June.</p>
+                    </div>
+                    <div className="p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600">
+                      <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Shallow Front or Boundary</p>
+                      <p>Pre-frontal low clouds ahead of a minor surface boundary. Clouds can be fragments or widespread along/ahead of the front. Negative vorticity can be present across the Bay Area. The pressure field off the N. CA coast is rather weak, allowing low clouds to exist. Often a quick increase in low clouds as weak systems contact cooler coastal waters west of SFO.</p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1048,22 +1267,52 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
                 <Sun className="h-5 w-5 text-orange-500" />
                 <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Cohen Burn-Off Analysis</h2>
               </div>
+
+              {/* Pattern Selector */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Synoptic Pattern Type
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setBurnOffPattern('trough')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                      burnOffPattern === 'trough'
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    Trough Pattern
+                  </button>
+                  <button
+                    onClick={() => setBurnOffPattern('ridge')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                      burnOffPattern === 'ridge'
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    Ridge Pattern
+                  </button>
+                </div>
+              </div>
               
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    14Z Ceiling Base Height (ft)
+                    14Z CIG Base (ft)
                   </label>
                   <input
                     type="number"
+                    min={0}
                     value={burnOff.base}
-                    onChange={(e) => { const v = getInt(e.currentTarget); setBurnOff(b => ({ ...b, base: v })); }}
+                    onChange={(e) => { const v = Math.max(0, getInt(e.currentTarget)); setBurnOff(b => ({ ...b, base: v })); }}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Cloud Top (ft)
+                    14Z Cloud Top (ft)
                   </label>
                   <input
                     type="number"
@@ -1072,15 +1321,216 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Thickness (auto)
+                  </label>
+                  <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-600 text-gray-900 dark:text-white transition-colors duration-300">
+                    {Math.max(0, burnOff.top - burnOff.base)} ft
+                  </div>
+                </div>
               </div>
               
               <div className="mt-4 p-3 bg-orange-50 dark:bg-orange-900/30 rounded-lg transition-colors duration-300">
-                <p className="text-sm text-orange-800 dark:text-orange-300">
-                  <strong>Estimated SCT Time:</strong> {calculateBurnOffTime(burnOff.base, burnOff.top)} hours after sunrise
-                  <br />
-                  <strong>Burn Rate:</strong> ~200 ft/hr | <strong>Thickness:</strong> {burnOff.top - burnOff.base}ft
+                <div className="flex justify-between items-center text-sm text-orange-800 dark:text-orange-300">
+                  <span><strong>Cohen Chart ({burnOffPattern}):</strong> {calculateBurnOffTime(burnOff.base, burnOff.top)} hrs after sunrise</span>
+                </div>
+                {prediction.burnOffModifiers && prediction.burnOffModifiers.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-orange-200 dark:border-orange-700">
+                    <p className="text-xs font-medium text-orange-700 dark:text-orange-400 mb-1">Modifiers Applied:</p>
+                    {prediction.burnOffModifiers.map((mod, idx) => (
+                      <p key={idx} className="text-xs text-orange-600 dark:text-orange-400">• {mod}</p>
+                    ))}
+                  </div>
+                )}
+                {prediction.burnOffAdjustment !== 0 && (
+                  <div className="mt-2 pt-2 border-t border-orange-200 dark:border-orange-700">
+                    <div className="flex justify-between text-sm text-orange-800 dark:text-orange-300">
+                      <span><strong>Adjusted SCT:</strong></span>
+                      <span className="font-bold">{prediction.burnOffHours} hrs after sunrise</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg transition-colors duration-300">
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  {burnOffPattern === 'trough' 
+                    ? 'Trough pattern: upper-level trough present, thicker marine layer, slower burn-off (Cohen 1987-91)'
+                    : 'Ridge pattern: upper-level ridge, stronger subsidence, faster burn-off (Cohen 1986-88)'}
                 </p>
               </div>
+            </div>
+
+            {/* Forecaster Notes — advisory only, no calculation impact */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 transition-colors duration-300">
+              <button
+                onClick={() => setForecastNotesExpanded(!forecastNotesExpanded)}
+                className="w-full p-6 flex items-center justify-between text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <Globe className="h-5 w-5 text-indigo-500" />
+                  <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Forecaster Notes</h2>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">(Advisory Only)</span>
+                </div>
+                {forecastNotesExpanded ? (
+                  <ChevronUp className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+                ) : (
+                  <ChevronDown className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+                )}
+              </button>
+              
+              {forecastNotesExpanded && (
+                <div className="px-6 pb-6 space-y-6">
+
+                  {/* ── Regional Pressure Patterns ── */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-indigo-700 dark:text-indigo-400 mb-3 uppercase tracking-wide">Regional Pressure Patterns</h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                      Enter available station pressures to check regional pattern rules. Leave at 0 to skip.
+                    </p>
+
+                    <div className="grid md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">RDD / Redding (mb)</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={crossStation.rdd || ''}
+                          onChange={(e) => { const v = getFloat(e.currentTarget); setCrossStation(s => ({ ...s, rdd: v })); }}
+                          placeholder="0"
+                          className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">RNO / Reno (mb)</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={crossStation.rno || ''}
+                          onChange={(e) => { const v = getFloat(e.currentTarget); setCrossStation(s => ({ ...s, rno: v })); }}
+                          placeholder="0"
+                          className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">SBA / Santa Barbara (mb)</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={crossStation.sba || ''}
+                          onChange={(e) => { const v = getFloat(e.currentTarget); setCrossStation(s => ({ ...s, sba: v })); }}
+                          placeholder="0"
+                          className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-1 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
+                        />
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-3 cursor-pointer mt-3">
+                      <input
+                        type="checkbox"
+                        checked={crossStation.sbaStratusPresent}
+                        onChange={(e) => setCrossStation(s => ({ ...s, sbaStratusPresent: e.target.checked }))}
+                        className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 rounded"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Stratus currently present in Santa Barbara Channel</span>
+                    </label>
+
+                    <div className="text-xs text-gray-500 dark:text-gray-400 p-2 bg-gray-50 dark:bg-gray-700 rounded mt-3">
+                      Reference: SFO={onPressure.sfo}mb | SAC/SMF={onPressure.smf}mb | ACV={offPressure.acv}mb
+                    </div>
+
+                    {/* Advisory Messages */}
+                    {getCrossStationAdvisories().length > 0 ? (
+                      <div className="space-y-2 mt-3">
+                        {getCrossStationAdvisories().map((adv, idx) => (
+                          <div key={idx} className={`p-3 rounded-lg text-sm ${
+                            adv.type === 'warning' 
+                              ? 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300' 
+                              : adv.type === 'positive'
+                              ? 'bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+                              : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300'
+                          }`}>
+                            {adv.message}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg text-sm text-gray-500 dark:text-gray-400 mt-3">
+                        {(crossStation.rdd > 0 || crossStation.rno > 0 || crossStation.sba > 0)
+                          ? 'No regional pattern signals detected with current values.'
+                          : 'Enter station pressures above to check regional pattern rules.'}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Divider */}
+                  <div className="border-t border-gray-200 dark:border-gray-600"></div>
+
+                  {/* ── Rules of Thumb ── */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-indigo-700 dark:text-indigo-400 mb-3 uppercase tracking-wide">Rules of Thumb</h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                      Qualitative forecasting signals from the Cohen-Lau study. These do not affect the calculation — use as situational awareness aids.
+                    </p>
+
+                    <div className="space-y-3">
+                      <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Wind Backing / Veering (Rule #6)</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          <strong>Backing winds</strong> (shifting counterclockwise, e.g., W→SW→S) at low levels indicate the marine layer is <strong>thickening</strong> — expect stratus to persist or deepen. <strong>Veering winds</strong> (shifting clockwise, e.g., W→NW→N) indicate <strong>thinning</strong> of marine air — stratus may erode faster than calculated.
+                        </p>
+                      </div>
+
+                      <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Eddy Trough North of SFO (Rule #4)</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          An eddy trough intersecting the coast north of SFO is favorable for stratus formation over the bay. Stratus typically forms <strong>first at OAK, then at SFO</strong>. Watch OAK observations as a leading indicator.
+                        </p>
+                      </div>
+
+                      <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">High Base Inversion Behavior (Rule #7)</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          A high BI generally indicates <strong>early stratus formation AND later dissipation</strong> — the thicker marine layer takes longer to burn off despite forming sooner. Mesoscale circulations can alter this rule. A rising BI trend often precedes the onset of a stratus cycle.
+                        </p>
+                      </div>
+
+                      <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Strong Wind Types (Rule #12)</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          <strong>(A) NW 30–40kt:</strong> Summer stratus flow — major driver of early "non-trigger" return of low CIGs and mid-morning streaming through approach zone.
+                          <strong> (B) NNE foehn:</strong> Strong high pressure to N/NE — offshore, stratus suppressed.
+                          <strong> (C) SSE pre-frontal:</strong> Precedes strong front passage.
+                          <strong> (D) SSE→W with secondary low:</strong> Wind shift attending secondary low passage over central CA.
+                        </p>
+                      </div>
+
+                      <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Slantwise Visibility After Burn-Off</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          When stratus in the 1,500–3,000ft layer burns off, residual haze from the inversion and trapped marine air can reduce <strong>slant-range visibility to 2–4SM</strong> even when surface conditions look fine. More common in spring and fall due to sun angle. Wildfire smoke compounds this effect.
+                        </p>
+                      </div>
+
+                      <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">CIG &lt; 500ft Clearing (Rule #10)</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          Stratus with CIG under 500ft will clear between <strong>0930–1000 PST ~95% of the time in July</strong> and by <strong>1030 PST ~85% in August</strong>. Very rare occurrence, and more often observed near the San Mateo Bridge area where aircraft can go over the top.
+                        </p>
+                      </div>
+
+                      <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">BI Minus 1,200ft Rule</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          Use <strong>BI − 1,200ft</strong> as a first guess at how low the CIG will drop during the forecast period. For example, BI of 1,600ft suggests CIG may lower to around 400ft.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              )}
             </div>
           </div>
 
@@ -1090,6 +1540,17 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
               <div className="flex items-center gap-2 mb-6">
                 <Clock className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                 <h2 className="text-xl font-bold text-gray-800 dark:text-white">Forecast Summary</h2>
+                <button
+                  onClick={() => setDarkMode(!darkMode)}
+                  className="ml-auto p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200"
+                  aria-label="Toggle dark mode"
+                >
+                  {darkMode ? (
+                    <Sun className="h-5 w-5 text-yellow-500" />
+                  ) : (
+                    <Moon className="h-5 w-5 text-gray-600" />
+                  )}
+                </button>
               </div>
 
               {/* Probability Gauge */}
@@ -1119,7 +1580,7 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
 
               {/* Timing Results */}
               <div className="space-y-3 mb-6">
-                {prediction.onsetWindow.mostProbable <= 24 ? (
+                {prediction.onsetWindow && prediction.onsetWindow.mostProbable <= 24 ? (
                   <>
                     <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4 transition-colors duration-300">
                       <div className="flex justify-between items-center mb-2">
@@ -1163,9 +1624,26 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
                   <div className="flex justify-between items-center">
                     <span className="font-medium text-orange-800 dark:text-orange-300">Burn-Off (SCT)</span>
                     <span className="text-lg font-bold text-orange-600 dark:text-orange-400">
-                      Sunrise + {prediction.burnOffHours}hrs
+                      {prediction.burnOffHours !== null ? `Sunrise + ${prediction.burnOffHours}hrs` : 'N/A'}
                     </span>
                   </div>
+                  {prediction.burnOffHours !== null && prediction.burnOffAdjustment !== 0 && prediction.baseBurnOffHours !== null && (
+                    <div className="flex justify-between items-center mt-1">
+                      <span className="text-xs text-orange-600 dark:text-orange-400">
+                        Base: {prediction.baseBurnOffHours}hrs {prediction.burnOffAdjustment > 0 ? '+' : ''}{prediction.burnOffAdjustment}hr adj
+                      </span>
+                      <span className="text-xs text-orange-600 dark:text-orange-400">
+                        ({burnOffPattern})
+                      </span>
+                    </div>
+                  )}
+                  {prediction.burnOffHours !== null && prediction.burnOffAdjustment === 0 && (
+                    <div className="flex justify-end mt-1">
+                      <span className="text-xs text-orange-600 dark:text-orange-400">
+                        ({burnOffPattern})
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center mt-2 pt-2 border-t border-orange-200 dark:border-orange-700">
                     <span className="text-sm text-orange-700 dark:text-orange-400">SFO Sunrise</span>
                     <span className="text-sm font-semibold text-orange-600 dark:text-orange-400">
