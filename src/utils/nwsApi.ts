@@ -17,7 +17,8 @@ export interface TemperatureData {
   maxTemp: number | null;
   maxDewpoint: number | null;
   dataSource: string;
-  timestamp: string;
+  timestamp: string;       // latest METAR timestamp in the window
+  fetchedAt: string;       // when the page actually fetched this data
 }
 
 // Convert Celsius to Fahrenheit
@@ -29,41 +30,27 @@ const celsiusToFahrenheit = (celsius: number): number => {
 const parseMaxFromRemarks = (rawMetar: string): { maxTemp: number | null; maxDewpoint: number | null } => {
   if (!rawMetar) return { maxTemp: null, maxDewpoint: null };
   
-  console.log(`Parsing METAR: ${rawMetar}`);
-  
   let maxTemp: number | null = null;
   let maxDewpoint: number | null = null;
   
   // Look for RMK section
   const rmkIndex = rawMetar.indexOf('RMK');
-  if (rmkIndex === -1) {
-    console.log('No RMK section found');
-    return { maxTemp: null, maxDewpoint: null };
-  }
+  if (rmkIndex === -1) return { maxTemp: null, maxDewpoint: null };
   
   const remarks = rawMetar.substring(rmkIndex);
-  console.log(`Remarks section: ${remarks}`);
   
   // Parse temperature/dewpoint from T group: TXXXXXXXX (where first 4 digits are temp, last 4 are dewpoint in tenths of degrees C)
   const tempDewMatch = remarks.match(/T([01])(\d{3})([01])(\d{3})/);
   if (tempDewMatch) {
-    console.log(`Found T group: ${tempDewMatch[0]}`);
-    
-    // Parse temperature
     const tempSign = tempDewMatch[1] === '1' ? -1 : 1;
     const tempTenths = parseInt(tempDewMatch[2]);
     const tempC = (tempSign * tempTenths) / 10;
     maxTemp = celsiusToFahrenheit(tempC);
-    console.log(`Parsed temp: ${tempSign} * ${tempTenths} / 10 = ${tempC}C = ${maxTemp}F`);
     
-    // Parse dewpoint
     const dewSign = tempDewMatch[3] === '1' ? -1 : 1;
     const dewTenths = parseInt(tempDewMatch[4]);
     const dewC = (dewSign * dewTenths) / 10;
     maxDewpoint = celsiusToFahrenheit(dewC);
-    console.log(`Parsed dewpoint: ${dewSign} * ${dewTenths} / 10 = ${dewC}C = ${maxDewpoint}F`);
-  } else {
-    console.log('No T group found in remarks');
   }
   
   return { maxTemp, maxDewpoint };
@@ -71,55 +58,56 @@ const parseMaxFromRemarks = (rawMetar: string): { maxTemp: number | null; maxDew
 
 // Get current dewpoint from main METAR observation
 const getCurrentDewpoint = (observation: MetarObservation): number | null => {
-  if (observation.dewpoint?.value !== undefined) {
-    const dewpointC = observation.dewpoint.value;
-    return celsiusToFahrenheit(dewpointC);
+  if (observation.dewpoint?.value != null && Number.isFinite(observation.dewpoint.value)) {
+    return celsiusToFahrenheit(observation.dewpoint.value);
   }
   return null;
 };
 
-// Check if timestamp is within 19Z-23Z window (accounting for METAR timing ~5min before hour)
-const isIn19to23ZWindow = (timestamp: string): boolean => {
-  const obsTime = new Date(timestamp);
-  const utcHour = obsTime.getUTCHours();
-  
-  // Just look for hours 19, 20, 21, 22, 23Z
-  return utcHour >= 19 && utcHour <= 23;
-};
-
-// Check if this is an hourly METAR (issued at 53-59 minutes past the hour)
-const isHourlyMetar = (timestamp: string): boolean => {
-  const obsTime = new Date(timestamp);
-  const minutes = obsTime.getUTCMinutes();
-  
-  // Hourly METARs are typically issued at 53-59 minutes past the hour
-  return minutes >= 53 && minutes <= 59;
-};
-
-// Get the date string for the most recent 20Z period for display
-const getMostRecent20ZDateString = (): string => {
+// Get yesterday's UTC date (the target for the most recently completed 20-24Z window).
+// The 20-24Z window for a given date completes at 00Z the next day.
+// At any point during "today" in UTC, the most recently COMPLETED window is yesterday's.
+// At 00Z, "yesterday" flips to the day whose window just finished — so it stays correct.
+const getTargetDate = (): { year: number; month: number; day: number } => {
   const now = new Date();
-  const utcHour = now.getUTCHours();
+  const yesterday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
+  return {
+    year: yesterday.getUTCFullYear(),
+    month: yesterday.getUTCMonth(),
+    day: yesterday.getUTCDate()
+  };
+};
+
+// Check if an observation falls within yesterday's 20-24Z window
+// METARs are timestamped ~53-59 min before the valid hour, so:
+//   1953Z → valid 20Z METAR → hour=19, min=53-59 → include
+//   2356Z → valid 00Z/24Z METAR → hour=23, min=53-59 → include
+const isInTargetWindow = (timestamp: string, target: { year: number; month: number; day: number }): boolean => {
+  const obs = new Date(timestamp);
   
-  // Find the most recent 20Z period
-  let targetDate = new Date(now);
-  if (utcHour < 20) {
-    // If before 20Z today, use yesterday's 20Z-24Z period
-    targetDate.setUTCDate(now.getUTCDate() - 1);
+  // Must match the target calendar date
+  if (obs.getUTCFullYear() !== target.year ||
+      obs.getUTCMonth() !== target.month ||
+      obs.getUTCDate() !== target.day) {
+    return false;
   }
   
-  const startDate = targetDate.getUTCDate();
-  const endDate = targetDate.getUTCDate(); // Same day since we're not crossing midnight
+  const hour = obs.getUTCHours();
+  const min = obs.getUTCMinutes();
   
-  return `${String(startDate).padStart(2, '0')}20Z-${String(endDate).padStart(2, '0')}24Z`;
+  // Only hourly METARs (issued at 53-59 minutes past the hour)
+  if (min < 53 || min > 59) return false;
+  
+  // Hours 19-23 capture the 20Z through 00Z/24Z METARs
+  return hour >= 19 && hour <= 23;
 };
 
 // Fetch METAR observations from NWS API
 export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
   try {
-    // Get 24 hours worth of observations (5min intervals = 12 per hour × 24 hours = 288, but use more to be safe)
+    // 500 obs at 5-min intervals ≈ 41 hours — ensures yesterday's 20Z data is available
     const response = await fetch(
-      'https://api.weather.gov/stations/KSFO/observations?limit=290',
+      'https://api.weather.gov/stations/KSFO/observations?limit=500',
       {
         headers: {
           'User-Agent': 'SFO-Stratus-Tool/1.0 (Weather Forecasting Application)'
@@ -140,54 +128,46 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
       rawMessage: feature.properties.rawMessage
     })) || [];
     
-    console.log('=== ALL FETCHED OBSERVATIONS ===');
-    observations.forEach((obs, index) => {
-      console.log(`${index + 1}. ${formatTimestamp(obs.timestamp)} - ${obs.rawMessage?.substring(0, 80)}...`);
-    });
-    console.log('=== END ALL OBSERVATIONS ===');
-    
     if (observations.length === 0) {
       throw new Error('No observations available');
     }
     
-    // Filter observations for 19Z-23Z window AND only hourly METARs
-    const relevantObs = observations.filter(obs => 
-      isIn19to23ZWindow(obs.timestamp) && isHourlyMetar(obs.timestamp)
-    );
+    // Pin to yesterday's UTC date — ensures both values come from the same
+    // completed 20-24Z window and today's data can't bleed in
+    const target = getTargetDate();
+    const targetLabel = `${target.year}-${String(target.month + 1).padStart(2, '0')}-${String(target.day).padStart(2, '0')}`;
     
-    console.log(`Found ${relevantObs.length} hourly observations in 19Z-23Z window`);
+    const relevantObs = observations.filter(obs => isInTargetWindow(obs.timestamp, target));
+    
+    console.log(`Target date: ${targetLabel} | Found ${relevantObs.length} hourly METARs in 20-24Z window`);
     relevantObs.forEach(obs => {
-      console.log(`  - ${formatTimestamp(obs.timestamp)}: ${obs.rawMessage?.substring(0, 50)}...`);
+      console.log(`  - ${formatTimestamp(obs.timestamp)}: ${obs.rawMessage?.substring(0, 60)}`);
     });
     
     let maxTemp: number | null = null;
     let maxDewpoint: number | null = null;
     let latestTimestamp = '';
     
-    // Process each observation in the 19-23Z window
+    // Process each METAR in yesterday's 20-24Z window
     for (const obs of relevantObs) {
-      console.log(`Processing obs at ${formatTimestamp(obs.timestamp)}: ${obs.rawMessage?.substring(0, 50)}...`);
-      
       // Try to get max temp from remarks first
       const remarksData = parseMaxFromRemarks(obs.rawMessage || '');
       
       if (remarksData.maxTemp !== null) {
-        console.log(`Found remarks temp: ${remarksData.maxTemp}F`);
         maxTemp = maxTemp === null ? remarksData.maxTemp : Math.max(maxTemp, remarksData.maxTemp);
       }
       
       if (remarksData.maxDewpoint !== null) {
-        console.log(`Found remarks dewpoint: ${remarksData.maxDewpoint}F`);
         maxDewpoint = maxDewpoint === null ? remarksData.maxDewpoint : Math.max(maxDewpoint, remarksData.maxDewpoint);
       }
       
-      // Also check current observation values as backup
-      if (obs.temperature?.value !== undefined) {
+      // Also check current observation values as backup (guard against null/NaN from API)
+      if (obs.temperature?.value != null && Number.isFinite(obs.temperature.value)) {
         const tempF = celsiusToFahrenheit(obs.temperature.value);
         maxTemp = maxTemp === null ? tempF : Math.max(maxTemp, tempF);
       }
       
-      if (obs.dewpoint?.value !== undefined) {
+      if (obs.dewpoint?.value != null && Number.isFinite(obs.dewpoint.value)) {
         const dewF = celsiusToFahrenheit(obs.dewpoint.value);
         maxDewpoint = maxDewpoint === null ? dewF : Math.max(maxDewpoint, dewF);
       }
@@ -198,11 +178,14 @@ export const fetchKSFOTemperatureData = async (): Promise<TemperatureData> => {
       }
     }
     
+    console.log(`Result: Max Temp=${maxTemp}°F, Max Dewpoint=${maxDewpoint}°F from ${targetLabel} 20-24Z`);
+    
     return {
       maxTemp,
       maxDewpoint,
-      dataSource: `NWS METAR (KSFO) 20Z-24Z window`,
-      timestamp: latestTimestamp || new Date().toISOString()
+      dataSource: `NWS METAR (KSFO) ${targetLabel} 20-24Z`,
+      timestamp: latestTimestamp || new Date().toISOString(),
+      fetchedAt: new Date().toISOString()
     };
     
   } catch (error) {

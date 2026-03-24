@@ -24,13 +24,6 @@ interface PressureData {
   trend24h: number;
 }
 
-interface SynopticTrigger {
-  deepeningTrough: boolean;
-  shortwaveTrough: boolean;
-  longWaveTrough: boolean;
-  shallowFront: boolean;
-}
-
 interface SynopticPattern {
   thermalLow: boolean;
   surfaceHigh: boolean;
@@ -65,12 +58,6 @@ function App() {
   });
   const [baseInversion, setBaseInversion] = useState<number>(1400);
   const [wind2k, setWind2k] = useState<WindData>({ direction: 270, speed: 15 });
-  const [triggers, setTriggers] = useState<SynopticTrigger>({
-    deepeningTrough: false,
-    shortwaveTrough: false,
-    longWaveTrough: false,
-    shallowFront: false
-  });
   const [selectedTrigger, setSelectedTrigger] = useState<string>('');
   const [synopticPatterns, setSynopticPatterns] = useState<SynopticPattern>({
     thermalLow: false,
@@ -154,41 +141,6 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
   const mm = Math.floor(mins % 60);
   return `${hh.toString().padStart(2, '0')}${mm.toString().padStart(2, '0')}Z`;
 };
-
-  // // Calculate sunrise time for SFO
-  // const getSunriseTime = () => {
-  //   const now = new Date();
-  //   const year = now.getUTCFullYear();
-  //   const month = now.getUTCMonth() + 1;
-  //   const day = now.getUTCDate();
-    
-  //   // Julian day calculation
-  //   const a = Math.floor((14 - month) / 12);
-  //   const y = year - a;
-  //   const m = month + 12 * a - 3;
-  //   const jd = day + Math.floor((153 * m + 2) / 5) + 365 * y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) + 1721119;
-    
-  //   // Solar calculations
-  //   const n = jd - 2451545.0;
-  //   const L = (280.460 + 0.9856474 * n) % 360;
-  //   const g = ((357.528 + 0.9856003 * n) % 360) * Math.PI / 180;
-  //   const lambda = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * Math.PI / 180;
-    
-  //   const alpha = Math.atan2(Math.cos(23.439 * Math.PI / 180) * Math.sin(lambda), Math.cos(lambda));
-  //   const delta = Math.asin(Math.sin(23.439 * Math.PI / 180) * Math.sin(lambda));
-    
-  //   const latRad = SFO_LAT * Math.PI / 180;
-  //   const hourAngle = Math.acos(-Math.tan(latRad) * Math.tan(delta));
-    
-  //   // Time calculations
-  //   const eqTime = 4 * (L * Math.PI / 180 - 0.0057183 - alpha + SFO_LON * Math.PI / 180);
-  //   const sunriseMinutes = 720 - 4 * SFO_LON - eqTime - 4 * hourAngle * 180 / Math.PI;
-    
-  //   const sunriseHours = Math.floor(sunriseMinutes / 60) % 24;
-  //   const sunriseMin = Math.floor(sunriseMinutes % 60);
-    
-  //   return `${sunriseHours.toString().padStart(2, '0')}${sunriseMin.toString().padStart(2, '0')}Z`;
-  // };
 
   // Fetch temperature data from NWS API
   const loadTemperatureData = async () => {
@@ -747,16 +699,29 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
     const roundedStartTime = roundToNearestHalfHour(startTime);
     const roundedEndTime = roundToNearestHalfHour(endTime);
     
-    // Calculate time windows (±1 hour for onset, ±0.5 hour for end)
+    // Adaptive onset window width based on SI (study finding: less variance
+    // at extreme SI values, higher variance for middle-range SI)
+    // SI <10 or >22: ±0.5hr (high confidence at extremes)
+    // SI 10-13 or 20-22: ±1.0hr (moderate)
+    // SI 13-20: ±1.5hr (most variable range)
+    const onsetSpread = (si < 10 || si > 22) ? 0.5
+      : (si <= 13 || si >= 20) ? 1.0
+      : 1.5;
+
+    // End time has more variance overall per the study
+    const endSpread = (si < 10 || si > 22) ? 0.5
+      : (si <= 13 || si >= 20) ? 1.0
+      : 1.5;
+
     const onsetWindow = {
-      earliest: Math.max(1, roundedStartTime - 1),
-      latest: roundedStartTime + 1,
+      earliest: Math.max(1, roundedStartTime - onsetSpread),
+      latest: roundedStartTime + onsetSpread,
       mostProbable: roundedStartTime
     };
     
     const endWindow = {
-      earliest: roundedEndTime - 0.5,
-      latest: roundedEndTime + 0.5,
+      earliest: roundedEndTime - endSpread,
+      latest: roundedEndTime + endSpread,
       mostProbable: roundedEndTime
     };
     
@@ -825,7 +790,7 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
                     <span className="font-medium">Auto-populated from {temperatureData.dataSource}</span>
                   </div>
                   <div className="text-xs text-green-700 dark:text-green-400 mt-1">
-                    Last updated: {formatTimestamp(temperatureData.timestamp)}
+                    Last updated: {formatTimestamp(temperatureData.fetchedAt)}
                   </div>
                   {temperatureData.maxTemp !== null && (
                     <div className="text-xs text-green-700 dark:text-green-400">
@@ -856,6 +821,7 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
                     type="number"
                     value={maxTemp}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMaxTemp(getFloat(e.currentTarget))}
+                    onBlur={(e) => setMaxTemp(Math.max(getFloat(e.currentTarget as HTMLInputElement, maxTemp), maxDewpoint))}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
@@ -867,6 +833,7 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
                     type="number"
                     value={maxDewpoint}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMaxDewpoint(getFloat(e.currentTarget))}
+                    onBlur={(e) => setMaxDewpoint(Math.min(getFloat(e.currentTarget as HTMLInputElement, maxDewpoint), maxTemp))}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
@@ -1016,8 +983,11 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
                   </label>
                   <input
                     type="number"
+                    min={0}
+                    step="10"
                     value={baseInversion}
-                    onChange={(e) => setBaseInversion(getInt(e.currentTarget))}
+                    onChange={(e) => setBaseInversion(Math.max(0, getInt(e.currentTarget)))}
+                    onBlur={(e) => setBaseInversion(Math.max(0, Math.round(getInt(e.currentTarget as HTMLInputElement, baseInversion) / 10) * 10))}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                   <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
@@ -1081,16 +1051,20 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
                     <p className="text-red-600 text-xs mt-1">⚠️ Below 42°F — stratus improbable</p>
                   )}
                 </div>
-                <div className="md:col-span-2 md:mt-8">
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={drizzleObserved}
-                      onChange={(e) => setDrizzleObserved(e.target.checked)}
-                      className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
-                    />
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Drizzle observed from stratus</span>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Drizzle from Stratus
                   </label>
+                  <button
+                    onClick={() => setDrizzleObserved(!drizzleObserved)}
+                    className={`w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                      drizzleObserved
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    {drizzleObserved ? 'Observed' : 'Not Observed'}
+                  </button>
                   {drizzleObserved && (
                     <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg transition-colors duration-300">
                       <p className="text-xs text-blue-800 dark:text-blue-300">
@@ -1190,67 +1164,69 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
               <div className="flex items-center gap-2 mb-4">
                 <Wind className="h-5 w-5 text-purple-500" />
                 <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Synoptic Patterns</h2>
-                <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">Multiple selections allowed</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">Toggle multiple</span>
               </div>
               
               <div className="space-y-4">
                 <div>
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Surface Patterns</h3>
-                  <div className="grid md:grid-cols-2 gap-3">
-                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
-                      <input
-                        type="checkbox"
-                        checked={synopticPatterns.thermalLow}
-                        onChange={(e) => setSynopticPatterns({...synopticPatterns, thermalLow: e.target.checked})}
-                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
-                      />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Thermal Low (Central Valley)</span>
-                    </label>
-                    
-                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
-                      <input
-                        type="checkbox"
-                        checked={synopticPatterns.surfaceHigh}
-                        onChange={(e) => setSynopticPatterns({...synopticPatterns, surfaceHigh: e.target.checked})}
-                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
-                      />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Surface High (Offshore)</span>
-                    </label>
+                  <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wide">Surface</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setSynopticPatterns({...synopticPatterns, thermalLow: !synopticPatterns.thermalLow})}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                        synopticPatterns.thermalLow
+                          ? 'bg-purple-500 text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      Thermal Low
+                    </button>
+                    <button
+                      onClick={() => setSynopticPatterns({...synopticPatterns, surfaceHigh: !synopticPatterns.surfaceHigh})}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                        synopticPatterns.surfaceHigh
+                          ? 'bg-purple-500 text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      SFC High (Offshore)
+                    </button>
                   </div>
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Upper-Level Patterns</h3>
-                  <div className="grid md:grid-cols-2 gap-3">
-                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
-                      <input
-                        type="checkbox"
-                        checked={synopticPatterns.upperRidge}
-                        onChange={(e) => setSynopticPatterns({...synopticPatterns, upperRidge: e.target.checked})}
-                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
-                      />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Upper Ridge</span>
-                    </label>
-                    
-                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
-                      <input
-                        type="checkbox"
-                        checked={synopticPatterns.upperTrough}
-                        onChange={(e) => setSynopticPatterns({...synopticPatterns, upperTrough: e.target.checked})}
-                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
-                      />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Upper Trough</span>
-                    </label>
-                    
-                    <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors duration-200">
-                      <input
-                        type="checkbox"
-                        checked={synopticPatterns.cutoffLow}
-                        onChange={(e) => setSynopticPatterns({...synopticPatterns, cutoffLow: e.target.checked})}
-                        className="w-4 h-4 text-blue-600 focus:ring-blue-500 rounded"
-                      />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">Cutoff Low</span>
-                    </label>
+                  <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wide">Upper-Level</h3>
+                  <div className="grid grid-cols-3 gap-3">
+                    <button
+                      onClick={() => setSynopticPatterns({...synopticPatterns, upperRidge: !synopticPatterns.upperRidge})}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                        synopticPatterns.upperRidge
+                          ? 'bg-purple-500 text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      Upper Ridge
+                    </button>
+                    <button
+                      onClick={() => setSynopticPatterns({...synopticPatterns, upperTrough: !synopticPatterns.upperTrough})}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                        synopticPatterns.upperTrough
+                          ? 'bg-purple-500 text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      Upper Trough
+                    </button>
+                    <button
+                      onClick={() => setSynopticPatterns({...synopticPatterns, cutoffLow: !synopticPatterns.cutoffLow})}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                        synopticPatterns.cutoffLow
+                          ? 'bg-purple-500 text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      Cutoff Low
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1305,8 +1281,10 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
                   <input
                     type="number"
                     min={0}
+                    step="10"
                     value={burnOff.base}
                     onChange={(e) => { const v = Math.max(0, getInt(e.currentTarget)); setBurnOff(b => ({ ...b, base: v })); }}
+                    onBlur={(e) => { const v = Math.max(0, Math.round(getInt(e.currentTarget as HTMLInputElement, burnOff.base) / 10) * 10); setBurnOff(b => ({ ...b, base: v })); }}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
@@ -1316,8 +1294,10 @@ const getSunriseTime = (opts?: { dayOffset?: number }) => {
                   </label>
                   <input
                     type="number"
+                    step="10"
                     value={burnOff.top}
                     onChange={(e) => { const v = getInt(e.currentTarget); setBurnOff(b => ({ ...b, top: v })); }}
+                    onBlur={(e) => { const v = Math.round(getInt(e.currentTarget as HTMLInputElement, burnOff.top) / 10) * 10; setBurnOff(b => ({ ...b, top: v })); }}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-300"
                   />
                 </div>
